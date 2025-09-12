@@ -1,3 +1,17 @@
+"""
+数据集准备与封装。
+
+提供两类任务：
+- WebQADataset：答案生成（通用问答），并基于模型为每个问题生成多条释义（paraphrases）。
+- MyriadLamaDataset：完形填空式知识验证（[X] -[REL]-> [Y]），构造手工/自动模板并替换为 [MASK]。
+
+主要功能：
+- 下载/加载原始数据集；
+- 基于给定模型批量生成 paraphrase；
+- 将 paraphrase、uuid、答案等字段整合并保存到磁盘；
+- 提供 DataLoader 与 few-shot 上下文构造接口。
+"""
+
 import os
 from pdb import set_trace
 import random
@@ -18,9 +32,17 @@ DATATASET_ROOT = "/home/xzhao/workspace/self-ensemble/datasets"
 
 
 def string_to_id(s):
+    """将任意字符串映射为稳定的 MD5 十六进制 ID。"""
     return hashlib.md5(s.encode()).hexdigest()
 
 def get_few_shot_paraphrases(few_shot=False, idx=0):
+    """few-shot 释义任务的上下文模板。
+
+    通过若干示例演示“将问题改写为不同表述”的任务，使模型更好地学习风格。
+    Args:
+        few_shot (bool): 是否拼接示例。
+        idx (int): 选取每组示例中的第 idx 条 paraphrase 作为演示。
+    """
     instruction = """
 Paraphrase the following question. Keep the original meaning, but use a different sentence structure and vocabulary. Aim to make the paraphrase sound natural and diverse.
     """
@@ -80,6 +102,7 @@ Paraphrase the following question. Keep the original meaning, but use a differen
 
 
 def generate_paraphrases(model, tokenizer, prompts, idx, seed=42):
+    """基于 few-shot 上下文，对输入问题列表生成 paraphrase。"""
     context = get_few_shot_paraphrases(few_shot=True, idx=idx)
     prompts = [f"{context}\n\nQ: {prompt}\nParaphrase:" for prompt in prompts]
     encoded = tokenizer(
@@ -107,11 +130,18 @@ def generate_paraphrases(model, tokenizer, prompts, idx, seed=42):
     return new_generated_texts
 
 def webqa_collate_fn(batch):
+    """WebQuestions 原始数据集的 DataLoader collate。"""
     questions = [item["question"] for item in batch]
     answers = [item["answers"] for item in batch]  # answers is a list of lists
     return questions, answers
 
 class ParaPharaseDataset:
+    """释义数据集抽象基类。
+
+    具体子类需实现：
+    - dataset_root / dataset_path / instruction
+    - load_dataset / get_dataloader / collate_fn / get_few_shot_examples
+    """
     def __init__(self, dataset, model):
         self.dataset = dataset
         self.model = model
@@ -123,6 +153,7 @@ class ParaPharaseDataset:
 
     @property
     def dataset_root(self):
+        """数据集在磁盘上的根目录。"""
         pass
 
     @property
@@ -131,34 +162,42 @@ class ParaPharaseDataset:
 
     @property
     def instruction(self):
+        """顶层任务指令，用于拼装提示。"""
         pass
     
     @abstractmethod
     def load_dataset(self):
+        """加载或构建并保存数据集，返回可索引对象。"""
         pass
 
     @abstractmethod
     def get_dataloader(self, batch_size=8, shuffle=False):
+        """返回与当前数据集对应的 DataLoader。"""
         pass
 
     @abstractmethod
     def collate_fn(self, batch):
+        """DataLoader 的打包函数。"""
         pass
 
     @abstractmethod
     def get_few_shot_examples(self, k=5, seed=42):
+        """采样 few-shot 示例，拼接为字符串上下文。"""
         pass
 
     def format_example(self, example):
+        """few-shot 示例的单条格式化。"""
         question = example["question"]
         answer = example["answers"][0]
         return f"Q: {question}\nA: {answer}"
 
     def construct_prompts(self, few_shot_examples, questions):
+        """拼装指令+few-shot+问题为完整提示。"""
         prompts = [f"{self.instruction}\n\n{few_shot_examples}\n\nQ: {question}\nA:" for question in questions]
         return prompts
 
 class WebQADataset(ParaPharaseDataset):
+    """WebQuestions 任务数据集封装与释义构建。"""
     def __init__(self, model_name, device="auto"):
         self.model_name = model_name
         self.device = device
@@ -167,17 +206,21 @@ class WebQADataset(ParaPharaseDataset):
 
     @property
     def dataset_root(self):
+        """当前模型名对应的 WebQA 数据落盘根目录。"""
         return os.path.join(DATATASET_ROOT, "webqa", self.model_name)
     
     @property
     def dataset_path(self):
+        """paraphrases_dataset 的保存路径。"""
         return os.path.join(self.dataset_root, "paraphrases_dataset")
 
     @property
     def instruction(self):
+        """顶层回答指令（偏简短直接）。"""
         return "Answer the question based on general world knowledge. Provide a short and direct answer."
     
     def load_dataset(self):
+        """如无缓存则生成 5 轮 paraphrase 并保存；否则直接从磁盘加载。"""
         if os.path.exists(self.dataset_path):
             print(f"Dataset already exists at {self.dataset_path}. Loading from disk.")
             return load_from_disk(self.dataset_path)
@@ -219,9 +262,11 @@ class WebQADataset(ParaPharaseDataset):
         return ds
 
     def get_dataloader(self, batch_size=8, shuffle=False):
+        """返回包含 (uuid, answers, 所有释义集合) 的 DataLoader。"""
         return DataLoader(self.ds, batch_size=batch_size, collate_fn=self.collate_fn, shuffle=shuffle)
 
     def collate_fn(self, batch):
+        """将一批样本拆成 6 组提示 + 答案 + uuid。"""
         uuids = [item["uuid"] for item in batch]
         prompt0 = [item["paraphrase0"] for item in batch]
         prompt1 = [item["paraphrase1"] for item in batch]
@@ -234,6 +279,7 @@ class WebQADataset(ParaPharaseDataset):
         return uuids, answers, all_prompts
     
     def get_few_shot_examples(self, k=5, seed=42):
+        """从训练集采样 few-shot 作为提示上下文。"""
         if self.train_ds is None:
             self.train_ds = load_dataset("stanfordnlp/web_questions", split="train")
         random.seed(seed)
@@ -241,23 +287,28 @@ class WebQADataset(ParaPharaseDataset):
         return "\n\n".join(self.format_example(self.train_ds[i]) for i in indices)
     
 class MyriadLamaDataset(ParaPharaseDataset):
+    """MyriadLAMA 任务数据集封装与模板构造。"""
     def __init__(self, model_name):
         self.model_name = model_name
         super().__init__("myriadlama", model_name)
 
     @property
     def dataset_root(self):
+        """MyriadLAMA 数据落盘根目录（按模型名分桶）。"""
         return os.path.join(DATATASET_ROOT, "myriadlama", self.model_name)
     
     @property
     def dataset_path(self):
+        """paraphrases_dataset 的保存路径（train/test 分割）。"""
         return os.path.join(DATATASET_ROOT, "myriadlama", "paraphrases_dataset")
     
     @property
     def instruction(self):
+        """完形填空任务指令：预测 [MASK]。"""
         return "Predict the [MASK] in the sentence in one word."
     
     def load_dataset(self):
+        """构建 MyriadLAMA 数据：抽取手工与自动模板，替换为 [MASK] 并保存 train/test。"""
         if os.path.exists(self.dataset_path):
             print(f"Dataset already exists at {self.dataset_path}. Loading from disk.")
             return load_from_disk(self.dataset_path)['test']
@@ -290,9 +341,11 @@ class MyriadLamaDataset(ParaPharaseDataset):
         return ds['test']
 
     def get_dataloader(self, batch_size=8, shuffle=False):
+        """返回 (uuids, answers, paraphrases_by_position) 的 DataLoader。"""
         return DataLoader(self.ds, batch_size=batch_size, collate_fn=self.collate_fn, shuffle=shuffle)
 
     def collate_fn(self, batch):
+        """将每条样本的手工+自动模板组装为固定 10 条 paraphrase，并按位置聚合。"""
         uuids = [item["uuid"] for item in batch]
         answers = [item["answers"] for item in batch]
         paraphrases = []
@@ -304,6 +357,7 @@ class MyriadLamaDataset(ParaPharaseDataset):
         return uuids, answers, list(zip(*paraphrases))
 
     def get_few_shot_examples(self, k=5, seed=42):
+        """从本地缓存的 train 切分采样 few-shot 示例。"""
         if not os.path.exists(self.dataset_path):
             raise FileNotFoundError(f"Dataset not found at {self.dataset_path}. Please run the dataset preparation first.")
         
@@ -313,6 +367,7 @@ class MyriadLamaDataset(ParaPharaseDataset):
         return "\n\n".join(self.format_example(train_ds[i]) for i in indices)
     
     def format_example(self, example):
+        """few-shot 示例的单条格式化（以手工模板为问题）。"""
         question = example["manual_paraphrases"][0]
         answer = example["answers"][0]
         return f"Q: {question}\nA: {answer}"

@@ -1,3 +1,10 @@
+"""
+独立的 paraphrase 生成脚本。
+
+基于 few-shot 释义上下文，对 WebQuestions 或 MyriadLAMA 构造的输入批量生成多条 paraphrase，
+并保存为可复用的数据集目录（datasets.save_to_disk）。
+"""
+
 from tqdm import tqdm
 from utils import set_seed
 from datasets import load_dataset
@@ -5,11 +12,13 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 def paraphrase_webqa_collate_fn(batch):
+    """WebQA 原始数据的 collate：输出问题与答案列表。"""
     questions = [item["question"] for item in batch]
     answers = [item["answers"] for item in batch]  # answers is a list of lists
     return questions, answers
 
 def get_few_shot_paraphrases(few_shot=False, idx=0):
+    """释义任务的 few-shot 示例上下文。"""
     instruction = """
 Paraphrase the following question. Keep the original meaning, but use a different sentence structure and vocabulary. Aim to make the paraphrase sound natural and diverse.
     """
@@ -69,6 +78,7 @@ Paraphrase the following question. Keep the original meaning, but use a differen
 
 
 def generate_paraphrases(prompts, idx, seed=42):
+    """对输入问题列表生成 paraphrase（采样式生成）。"""
     context = get_few_shot_paraphrases(few_shot=True, idx=idx)
     prompts = [f"{context}\n\nQ: {prompt}\nParaphrase:" for prompt in prompts]
     encoded = tokenizer(
@@ -100,7 +110,7 @@ if __name__ == "__main__":
     import argparse
     from constants import MODEL_PATHs
 
-    parser = argparse.ArgumentParser(description="Generate confidence scores for paraphrases.")
+    parser = argparse.ArgumentParser(description="Generate paraphrases dataset.")
     parser.add_argument("--device", type=str, default="auto", help="Device to run the model on.")
     parser.add_argument("--model", type=str, default="llama3.2_3b_it", help="Path to the pre-trained model.")
     parser.add_argument("--dataset", type=str, required=True, choices=["webqa", "myriadlama"], help="Dataset to use for generating paraphrases.")

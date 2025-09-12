@@ -1,3 +1,16 @@
+"""
+集成式生成（self-ensemble）。
+
+支持多种融合策略：
+- per_prompt：逐提示独立生成（不融合），便于对比。
+- avg：对多个提示的下一步 logits 取平均后再 argmax。
+- max：对多个提示的下一步概率取逐类最大后再 argmax。
+- weighted_avg：按权重（通常来源于 confidence）对 logits 加权平均。
+- weighted_max：对权重沿样本位置取 argmax，选择对应提示的 logits 再 argmax。
+
+可选对生成/答案进行词形还原（lemmaize）以便后续匹配与统计。
+"""
+
 from pdb import set_trace
 import os
 import spacy
@@ -17,15 +30,18 @@ nlp = None
 num_parts = 8
 
 def init_spacy():
+    """多进程初始化：加载 spaCy 大模型用于词形还原。"""
     global nlp
     nlp = spacy.load("en_core_web_lg")
 
 def lemmaize_predicts(predict):
+    """将文本转为词形还原后的小写 token 列表。"""
     global nlp
     doc = nlp(predict)
     return [token.lemma_.lower() for token in doc]
 
 def lemmaize_chunk(chunk):
+    """对 DataFrame 分块批量做词形还原，返回 (pred_lemmas, answer_lemmas)。"""
     predict_lemmas = []
     answer_lemmas = []
     for prediction, answers in tqdm(zip(chunk["prediction"], chunk["answers"]), total=len(chunk)):
@@ -34,6 +50,7 @@ def lemmaize_chunk(chunk):
     return predict_lemmas, answer_lemmas
 
 def append_lemmas(df, results):
+    """将多进程返回的词形还原结果写回到 DataFrame。"""
     all_predict_lemmas = []
     all_answer_lemmas = []
     for predict_lemmas, answer_lemmas in results:
@@ -44,6 +61,7 @@ def append_lemmas(df, results):
     return df
 
 def single_generation(prompts, max_new_tokens=20):
+    """逐步贪心生成实现（显式步进），便于可控地融合或对比。"""
     tokenizer.pad_token_id = tokenizer.eos_token_id
     model.generation_config.temperature = None
     model.generation_config.top_p = None
@@ -75,6 +93,15 @@ def single_generation(prompts, max_new_tokens=20):
 
 @torch.no_grad()
 def ensemble_generation(prompt_sets, integration_method="max", weights=None):
+    """基于多提示的下一步分布进行 token 级融合生成。
+
+    Args:
+        prompt_sets (List[List[str]]): N 组提示，每组长度为 batch。
+        integration_method (str): 融合策略，见模块说明。
+        weights (List[List[float]]|Tensor|None): 每组提示在每个样本位置的权重（加权策略使用）。
+    Returns:
+        List[str]: 每个样本一条最终生成文本。
+    """
     tokenizer.pad_token_id = tokenizer.eos_token_id
     model.generation_config.temperature = None
     model.generation_config.top_p = None
