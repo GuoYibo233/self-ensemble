@@ -9,35 +9,35 @@ def test_imports():
     """测试所有必要的导入"""
     try:
         import torch
-        print(f"✅ PyTorch {torch.__version__} - 安装成功")
+        print(f"✅ PyTorch {torch.__version__} - Installed successfully")
 
         import numpy as np
-        print(f"✅ NumPy {np.__version__} - 安装成功")
+        print(f"✅ NumPy {np.__version__} - Installed successfully")
 
         import pandas as pd
-        print(f"✅ Pandas {pd.__version__} - 安装成功")
+        print(f"✅ Pandas {pd.__version__} - Installed successfully")
 
         import tqdm
-        print(f"✅ tqdm {tqdm.__version__} - 安装成功")
+        print(f"✅ tqdm {tqdm.__version__} - Installed successfully")
 
         # 测试基本的torch操作
         x = torch.randn(2, 3)
         y = torch.softmax(x, dim=-1)
-        print(f"✅ PyTorch基本操作正常")
+        print(f"✅ PyTorch basic operations working")
 
         # 测试numpy和pandas操作
         arr = np.random.randn(5, 3)
         df = pd.DataFrame(arr, columns=['A', 'B', 'C'])
-        print(f"✅ NumPy和Pandas操作正常")
+        print(f"✅ NumPy and Pandas operations working")
 
-        print("\n🎉 所有依赖测试通过！环境配置成功！")
+        print("\n🎉 All dependency tests passed! Environment configured successfully!")
         return True
 
     except ImportError as e:
-        print(f"❌ 导入错误: {e}")
+        print(f"❌ Import error: {e}")
         return False
     except Exception as e:
-        print(f"❌ 其他错误: {e}")
+        print(f"❌ Other error: {e}")
         return False
 
 
@@ -53,32 +53,32 @@ def test_debug_script():
         sys.path.insert(0, current_dir)
 
         # 这里只测试基本的模拟功能，不需要实际运行整个脚本
-        print("✅ 可以访问debug_generate.py")
+        print("✅ Can access debug_generate.py")
         return True
 
     except Exception as e:
-        print(f"❌ debug脚本测试失败: {e}")
+        print(f"❌ Debug script test failed: {e}")
         return False
 
 
 if __name__ == "__main__":
-    print("=== Self-Ensemble 环境测试 ===\n")
+    print("=== Self-Ensemble Environment Test ===\n")
 
     # 显示Python版本和环境信息
     import sys
-    print(f"Python版本: {sys.version}")
-    print(f"Python可执行文件: {sys.executable}")
+    print(f"Python version: {sys.version}")
+    print(f"Python executable: {sys.executable}")
     print()
 
     # 测试依赖
     success = test_imports()
 
     if success:
-        print("\n=== 准备运行debug脚本测试 ===")
+        print("\n=== Preparing debug script test ===")
         # 运行一个简单的debug脚本测试
         test_debug_script()
 
-        print(f"\n✅ 环境配置完成！")
-        print(f"现在你可以运行: python debug_generate.py --method per_prompt")
+        print(f"\n✅ Environment configuration complete!")
+        print(f"You can now run: python debug_generate.py --method per_prompt")
     else:
-        print(f"\n❌ 环境配置有问题，请检查依赖安装")
+        print(f"\n❌ Environment configuration has issues, please check dependency installation")

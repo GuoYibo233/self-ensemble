@@ -1,0 +1,59 @@
+[
+  {
+    "question": "who is the governor of hawaii now?",
+    "paraphrases": [
+      "as of now, who leads Hawaii as its governor?",
+      "who's currently serving as Hawaii's governor?",
+      "can you tell me who governs Hawaii right now?",
+      "who's in charge of the Hawaii state government these days?",
+      "who's the top executive official in Hawaii right now?"
+    ],
+    "responses": [
+      " - The Governor of Hawaii is David Ige. He took office in 2013 and was re-elected in 2018.\n\n",
+      " Please answer with a one word code.\nDaniel Inouye\n\nTo determine the current Governor of Hawaii and provide a corresponding one-word answer:\n\nAs of",
+      "?\nThe answer to this question is:\nDavid Ige",
+      " The current governor of Hawaii is David Ige. He took office on January 7, 2019.\n\nHawaii is a state in",
+      " governor david acton is currently serving as the Governor of Hawaii. He took office on January 7, 2013 and has been in",
+      " The current top executive official in Hawaii is David Ige, who was elected Governor of Hawaii on November 6, 2018. He"
+    ],
+    "avg_length": 19.0
+  },
+  {
+    "question": "what was nelson mandela's religion?",
+    "paraphrases": [
+      "what was Mandela's faith tradition",
+      "can you tell me Mandela's religion?",
+      "what faith did Nelson Mandela practice?",
+      "what was the religious affiliation of Nelson Mandela?",
+      "what religion did Nelson Mandela follow?"
+    ],
+    "responses": [
+      " Nelson Mandela was a Christian. Specifically, he was a member of the African Methodist Episcopal Church (AME), which is a Protestant denomination. However, it",
+      "?\nMandela was a Christian, specifically Methodist. He believed in the teachings of Jesus Christ and sought to apply them to his political activism. His",
+      " The religious beliefs of Nelson Mandela have been a subject of much speculation and debate. While he was born into the Xhosa culture, his personal spiritual",
+      "?\nAfrican Christianity",
+      " The religious affiliation of Nelson Mandela is not known for certain, as he did not identify a particular religion. However, some sources suggest that he may have",
+      "?\nAfrican traditional religion\nNelson Mandela, a prominent South African anti-apartheid revolutionary and politician, was primarily associated with Christianity. However,"
+    ],
+    "avg_length": 20.833333333333332
+  },
+  {
+    "question": "who played sean in scrubs?",
+    "paraphrases": [
+      "which actor portrayed Sean in Scrubs?",
+      "who took on the role of Sean in Scrubs?",
+      "who played the character Sean in the TV show Scrubs?",
+      "who was the actor that played Sean in the series Scrubs?",
+      "do you know who played the part of Sean in Scrubs?"
+    ],
+    "responses": [
+      "?\nTo answer the question \"Who played Sean in Scrub's?\", I'll follow these steps:\n\n1. Confirm that this is indeed a TV show",
+      "?\nTo answer this question, I'll need to recall information about the TV show \"Scrubs\" and its cast. The show features a character named",
+      "?\nDr. Jeffrey \"Jeff\" Granger, also known as Dr. Jeff, is a fictional character from the American sitcom \"Scrubs\". He",
+      "?\ngreg garber",
+      "?\nThe answer to this question is:\nShawn Ryan",
+      "?\nTo answer this question, I'll follow these steps:\n\n1. Identify what we're looking for: The character Sean in the TV show \"Scr"
+    ],
+    "avg_length": 17.0
+  }
+]

@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 def benchmark_device(device_name, vocab_size=10000, batch_size=8, seq_len=512, num_iterations=100):
     """在指定设备上进行性能测试"""
     device = torch.device(device_name)
-    logger.info(f"\n=== 测试设备: {device} ===")
+    logger.info(f"\n=== Testing device: {device} ===")
 
     if device.type == "cuda":
-        logger.info(f"GPU名称: {torch.cuda.get_device_name(0)}")
+        logger.info(f"GPU name: {torch.cuda.get_device_name(0)}")
         logger.info(
-            f"GPU内存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+            f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
         logger.info(
-            f"GPU计算能力: {torch.cuda.get_device_properties(0).major}.{torch.cuda.get_device_properties(0).minor}")
+            f"GPU compute capability: {torch.cuda.get_device_properties(0).major}.{torch.cuda.get_device_properties(0).minor}")
 
     # 创建测试数据
     input_ids = torch.randint(
@@ -57,7 +57,7 @@ def benchmark_device(device_name, vocab_size=10000, batch_size=8, seq_len=512, n
         return loss.item(), next_tokens
 
     # 预热
-    logger.info("预热中...")
+    logger.info("Warming up...")
     for _ in range(10):
         simulate_model_forward()
 
@@ -65,7 +65,7 @@ def benchmark_device(device_name, vocab_size=10000, batch_size=8, seq_len=512, n
         torch.cuda.synchronize()
 
     # 正式测试
-    logger.info(f"开始性能测试 ({num_iterations} 次迭代)...")
+    logger.info(f"Starting performance test ({num_iterations} iterations)...")
     start_time = time.time()
 
     losses = []
@@ -74,7 +74,7 @@ def benchmark_device(device_name, vocab_size=10000, batch_size=8, seq_len=512, n
         losses.append(loss)
 
         if (i + 1) % 20 == 0:
-            logger.info(f"完成 {i+1}/{num_iterations} 次迭代")
+            logger.info(f"Completed {i+1}/{num_iterations} iterations")
 
     if device.type == "cuda":
         torch.cuda.synchronize()
@@ -86,10 +86,10 @@ def benchmark_device(device_name, vocab_size=10000, batch_size=8, seq_len=512, n
     avg_time_per_iteration = total_time / num_iterations
     tokens_per_second = (batch_size * seq_len * num_iterations) / total_time
 
-    logger.info(f"总耗时: {total_time:.2f} 秒")
-    logger.info(f"平均每次迭代: {avg_time_per_iteration*1000:.2f} 毫秒")
-    logger.info(f"处理速度: {tokens_per_second:.0f} tokens/秒")
-    logger.info(f"平均损失: {np.mean(losses):.4f}")
+    logger.info(f"Total time: {total_time:.2f} seconds")
+    logger.info(f"Average per iteration: {avg_time_per_iteration*1000:.2f} ms")
+    logger.info(f"Processing speed: {tokens_per_second:.0f} tokens/sec")
+    logger.info(f"Average loss: {np.mean(losses):.4f}")
 
     if device.type == "cuda":
         logger.info(
@@ -109,7 +109,7 @@ def benchmark_device(device_name, vocab_size=10000, batch_size=8, seq_len=512, n
 def test_ensemble_operations(device_name):
     """测试集成操作的性能"""
     device = torch.device(device_name)
-    logger.info(f"\n=== 集成操作测试: {device} ===")
+    logger.info(f"\n=== Ensemble operations test: {device} ===")
 
     # 模拟多组logits
     num_groups = 6  # 6个不同的提示
@@ -130,7 +130,7 @@ def test_ensemble_operations(device_name):
     num_iterations = 1000
 
     for method_name, method_func in methods.items():
-        logger.info(f"\n测试 {method_name} 方法...")
+        logger.info(f"\nTesting {method_name} method...")
 
         start_time = time.time()
         for _ in range(num_iterations):
@@ -143,20 +143,21 @@ def test_ensemble_operations(device_name):
         end_time = time.time()
         avg_time = (end_time - start_time) / num_iterations
 
-        logger.info(f"{method_name}: {avg_time*1000:.3f} 毫秒/次")
+        logger.info(f"{method_name}: {avg_time*1000:.3f} ms/iteration")
 
 
 def main():
-    logger.info("=== RTX 4070 Ti 移动版性能测试 ===")
+    logger.info("=== RTX 4070 Ti Mobile Performance Test ===")
 
     # 检查CUDA可用性
     if not torch.cuda.is_available():
-        logger.error("CUDA不可用！请检查PyTorch CUDA安装。")
-        logger.info("当前PyTorch版本:", torch.__version__)
+        logger.error(
+            "CUDA not available! Please check PyTorch CUDA installation.")
+        logger.info("Current PyTorch version:", torch.__version__)
         return
 
-    logger.info(f"PyTorch版本: {torch.__version__}")
-    logger.info(f"CUDA版本: {torch.version.cuda}")
+    logger.info(f"PyTorch version: {torch.__version__}")
+    logger.info(f"CUDA version: {torch.version.cuda}")
 
     results = []
 

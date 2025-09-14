@@ -1,0 +1,22 @@
+{
+  "model_path": "D:/Codes/Models/qwen2.5_1.5b_it",
+  "device": "cuda:0",
+  "timestamp": "20250915_052515",
+  "results": [
+    {
+      "prompt": "What is the capital of France?",
+      "response": "What is the capital of France? The capital of France is Paris. It is located in the northwestern part of the country and is famous for its historical landmarks such as the Eiffel Tower, Notre-Dame Cathedral, and Louvre Museum. Paris is also known for its fashion",
+      "answer": "The capital of France is Paris. It is located in the northwestern part of the country and is famous for its historical landmarks such as the Eiffel Tower, Notre-Dame Cathedral, and Louvre Museum. Paris is also known for its fashion"
+    },
+    {
+      "prompt": "Explain machine learning in simple terms.",
+      "response": "Explain machine learning in simple terms. Machine learning is a type of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed. In other words, it involves the use of algorithms and statistical models to analyze data and make predictions or decisions based on patterns in the data.\n\n",
+      "answer": "Machine learning is a type of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed. In other words, it involves the use of algorithms and statistical models to analyze data and make predictions or decisions based on patterns in the data."
+    },
+    {
+      "prompt": "Write a short story about a robot.",
+      "response": "Write a short story about a robot. Once upon a time, there was a robot named Robby who lived in a small house with his owner, Sarah. Robby was a humanoid robot with a round head and two arms that could move freely. He had a set of eyes on top",
+      "answer": "Once upon a time, there was a robot named Robby who lived in a small house with his owner, Sarah. Robby was a humanoid robot with a round head and two arms that could move freely. He had a set of eyes on top"
+    }
+  ]
+}

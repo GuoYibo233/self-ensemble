@@ -1,0 +1,22 @@
+{
+  "model_path": "D:/Codes/Models/qwen2.5_1.5b_it",
+  "device": "cpu",
+  "timestamp": "20250915_051636",
+  "results": [
+    {
+      "prompt": "What is the capital of France?",
+      "response": "What is the capital of France? The capital city of France, commonly known as Paris, was founded in 523 BC by the Celtic tribe called the Parisii. The first permanent settlement on the site was built around a small hill called Ilerda and it later became the",
+      "answer": "The capital city of France, commonly known as Paris, was founded in 523 BC by the Celtic tribe called the Parisii. The first permanent settlement on the site was built around a small hill called Ilerda and it later became the"
+    },
+    {
+      "prompt": "Explain machine learning in simple terms.",
+      "response": "Explain machine learning in simple terms. Machine learning is a branch of artificial intelligence that allows computers to learn and improve their performance on specific tasks without being explicitly programmed. In other words, it's the ability for machines to automatically recognize patterns and make predictions based on data.\n\nHere are some key",
+      "answer": "Machine learning is a branch of artificial intelligence that allows computers to learn and improve their performance on specific tasks without being explicitly programmed. In other words, it's the ability for machines to automatically recognize patterns and make predictions based on data.\n\nHere are some key"
+    },
+    {
+      "prompt": "Write a short story about a robot.",
+      "response": "Write a short story about a robot. Once upon a time, there was a robot named Robo who lived in the heart of an enormous city called Robotropolis. Robo was built to be a perfect assistant for humans, but he had his own dreams and ambitions.\n\nRobo loved to",
+      "answer": "Once upon a time, there was a robot named Robo who lived in the heart of an enormous city called Robotropolis. Robo was built to be a perfect assistant for humans, but he had his own dreams and ambitions.\n\nRobo loved to"
+    }
+  ]
+}

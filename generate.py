@@ -25,6 +25,20 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from constants import MODEL_PATHs
 
+# 尝试导入Qwen3配置（可选）
+try:
+    from qwen3_config import (
+        setup_qwen3_model_and_tokenizer,
+        is_qwen3_model,
+        format_prompt_for_qwen3,
+        apply_qwen3_chat_template
+    )
+    QWEN3_AVAILABLE = True
+    print("Qwen3 configuration module loaded successfully")
+except ImportError:
+    QWEN3_AVAILABLE = False
+    print("Qwen3 configuration module not found, using default configuration")
+
 warnings.filterwarnings(
     "ignore", message=".*To copy construct from a tensor.*")
 
