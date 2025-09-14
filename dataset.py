@@ -134,9 +134,10 @@ def generate_paraphrases(model, tokenizer, prompts, idx, seed=42):
         pad_token_id=tokenizer.eos_token_id,
     )
 
-    generated_texts = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    generated_texts = tokenizer.batch_decode(
+        generated_ids, skip_special_tokens=True)
     new_generated_texts = [
-        gen[len(prompt) :].strip() for gen, prompt in zip(generated_texts, prompts)
+        gen[len(prompt):].strip() for gen, prompt in zip(generated_texts, prompts)
     ]
     return new_generated_texts
 
@@ -241,7 +242,8 @@ class WebQADataset(ParaPharaseDataset):
     def load_dataset(self):
         """如无缓存则生成 5 轮 paraphrase 并保存；否则直接从磁盘加载。"""
         if os.path.exists(self.dataset_path):
-            print(f"Dataset already exists at {self.dataset_path}. Loading from disk.")
+            print(
+                f"Dataset already exists at {self.dataset_path}. Loading from disk.")
             return load_from_disk(self.dataset_path)
 
         print("Creating WebQA dataset...")
@@ -259,7 +261,8 @@ class WebQADataset(ParaPharaseDataset):
         tokenizer.pad_token = tokenizer.eos_token
 
         test_ds = load_dataset("stanfordnlp/web_questions", split="test")
-        dataloader = DataLoader(test_ds, batch_size=8, collate_fn=webqa_collate_fn)
+        dataloader = DataLoader(test_ds, batch_size=8,
+                                collate_fn=webqa_collate_fn)
 
         paras = []
         for i in range(5):
@@ -271,7 +274,8 @@ class WebQADataset(ParaPharaseDataset):
                 generations = generate_paraphrases(
                     model, tokenizer, questions, idx=i, seed=i
                 )
-                paraphrases = [gen.strip().split("\n")[0] for gen in generations]
+                paraphrases = [gen.strip().split("\n")[0]
+                               for gen in generations]
                 all_questions.extend(questions)
                 all_paraphrases.extend(paraphrases)
             paras.append(all_paraphrases)
@@ -310,7 +314,8 @@ class WebQADataset(ParaPharaseDataset):
     def get_few_shot_examples(self, k=5, seed=42):
         """从训练集采样 few-shot 作为提示上下文。"""
         if self.train_ds is None:
-            self.train_ds = load_dataset("stanfordnlp/web_questions", split="train")
+            self.train_ds = load_dataset(
+                "stanfordnlp/web_questions", split="train")
         random.seed(seed)
         indices = random.sample(range(len(self.train_ds)), k)
         return "\n\n".join(self.format_example(self.train_ds[i]) for i in indices)
@@ -341,8 +346,16 @@ class MyriadLamaDataset(ParaPharaseDataset):
     def load_dataset(self):
         """构建 MyriadLAMA 数据：抽取手工与自动模板，替换为 [MASK] 并保存 train/test。"""
         if os.path.exists(self.dataset_path):
-            print(f"Dataset already exists at {self.dataset_path}. Loading from disk.")
-            return load_from_disk(self.dataset_path)["test"]
+            print(
+                f"Dataset already exists at {self.dataset_path}. Loading from disk.")
+            full_ds = load_from_disk(self.dataset_path)["test"]
+            # 从2000个样本中随机抽取250个用于快速测试
+            import random
+            random.seed(42)
+            indices = random.sample(range(len(full_ds)), min(250, len(full_ds)))
+            subset_ds = full_ds.select(indices)
+            print(f"Selected {len(subset_ds)} samples from {len(full_ds)} total samples")
+            return subset_ds
 
         print("Creating MyriadLAMA dataset...")
         ds = load_dataset("iszhaoxin/MyriadLAMA", split="train")
@@ -353,14 +366,18 @@ class MyriadLamaDataset(ParaPharaseDataset):
             uuid = sdf["uuid"].iloc[0]
             rel = sdf["rel_uri"].iloc[0]
             answers = sdf["obj_aliases"].iloc[0].tolist()
-            manual_templates = sdf[sdf["is_manual"] == True]["template"].tolist()
+            manual_templates = sdf[sdf["is_manual"]
+                                   == True]["template"].tolist()
             manual_prompts = [
-                template.replace("[X]", sdf["sub_ent"].iloc[0]).replace("[Y]", "[MASK]")
+                template.replace("[X]", sdf["sub_ent"].iloc[0]
+                                 ).replace("[Y]", "[MASK]")
                 for template in manual_templates
             ]
-            auto_templates = sdf[sdf["is_manual"] == False]["template"].tolist()
+            auto_templates = sdf[sdf["is_manual"]
+                                 == False]["template"].tolist()
             auto_prompts = [
-                template.replace("[X]", sdf["sub_ent"].iloc[0]).replace("[Y]", "[MASK]")
+                template.replace("[X]", sdf["sub_ent"].iloc[0]
+                                 ).replace("[Y]", "[MASK]")
                 for template in auto_templates
             ]
             items.append(
