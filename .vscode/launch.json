@@ -1,0 +1,75 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "🔍 逐提示模式调试",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_generate.py",
+            "args": [
+                "--method",
+                "per_prompt"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "C:\\Users\\Kryos Seira\\.conda\\envs\\self-ensemble-debug\\python.exe",
+            "stopOnEntry": false
+        },
+        {
+            "name": "🔍 平均集成模式调试",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_generate.py",
+            "args": [
+                "--method",
+                "avg"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "C:\\Users\\Kryos Seira\\.conda\\envs\\self-ensemble-debug\\python.exe",
+            "stopOnEntry": false
+        },
+        {
+            "name": "🔍 加权平均集成调试",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_generate.py",
+            "args": [
+                "--method",
+                "weighted_avg"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "C:\\Users\\Kryos Seira\\.conda\\envs\\self-ensemble-debug\\python.exe",
+            "stopOnEntry": false
+        },
+        {
+            "name": "🔍 最大值集成调试",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_generate.py",
+            "args": [
+                "--method",
+                "max"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "C:\\Users\\Kryos Seira\\.conda\\envs\\self-ensemble-debug\\python.exe",
+            "stopOnEntry": false
+        },
+        {
+            "name": "🔍 加权最大值集成调试",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_generate.py",
+            "args": [
+                "--method",
+                "weighted_max"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "C:\\Users\\Kryos Seira\\.conda\\envs\\self-ensemble-debug\\python.exe",
+            "stopOnEntry": false
+        }
+    ]
+}

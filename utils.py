@@ -12,9 +12,10 @@
 import re
 import string
 import torch
-import random 
+import random
 import numpy as np
 from tqdm import tqdm
+
 
 def set_seed(seed):
     """设置随机种子，提升实验可复现性。
@@ -27,6 +28,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
 
 def webqa_collate_fn(batch):
     """WebQuestions 数据批处理函数。
@@ -49,6 +51,7 @@ def webqa_collate_fn(batch):
     all_prompts = [prompt0, prompt1, prompt2, prompt3, prompt4, prompt5]
     return prompt0, answers, all_prompts
 
+
 def myriadlama_collate_fn(batch):
     """MyriadLAMA 数据批处理函数。
 
@@ -64,6 +67,7 @@ def myriadlama_collate_fn(batch):
     manual_paraphrase = zip(*manual_paraphrase)
     return uuids, answers, manual_paraphrase
 
+
 def format_example(example):
     """few-shot 显示用的单条样例格式化。
 
@@ -73,6 +77,7 @@ def format_example(example):
     # 默认取第一个答案（可按需改动）
     answer = example["answers"][0]
     return f"Q: {question}\nA: {answer}"
+
 
 def get_few_shot_examples(dataset, k=5, seed=42):
     """从给定数据集中采样 k 个 few-shot 示例并串接。
@@ -86,6 +91,7 @@ def get_few_shot_examples(dataset, k=5, seed=42):
     indices = random.sample(range(len(dataset)), k)
     return "\n\n".join(format_example(dataset[i]) for i in indices)
 
+
 def construct_prompts(questions, few_shot_examples, instruction):
     """将统一指令 + few-shot 语境 + 具体问题拼为完整提示。
 
@@ -94,8 +100,12 @@ def construct_prompts(questions, few_shot_examples, instruction):
         few_shot_examples (str): few-shot 上下文（多条样例拼接）。
         instruction (str): 顶层任务指令/说明。
     """
-    prompts = [f"{instruction}\n\n{few_shot_examples}\n\nQ: {question}\nA:" for question in questions]
+    prompts = [
+        f"{instruction}\n\n{few_shot_examples}\n\nQ: {question}\nA:"
+        for question in questions
+    ]
     return prompts
+
 
 def multinormal_generation(model, tokenizer, prompts, num_samples):
     """对每条提示进行采样式生成（多次返回）。
@@ -106,29 +116,40 @@ def multinormal_generation(model, tokenizer, prompts, num_samples):
         List[List[str]]: 形如 [batch, num_samples] 的生成文本列表。
     """
     inputs = tokenizer(
-        prompts, return_tensors="pt", padding=True, padding_side='left',
-        truncation=True, return_token_type_ids=False).to(model.device)
-    
+        prompts,
+        return_tensors="pt",
+        padding=True,
+        padding_side="left",
+        truncation=True,
+        return_token_type_ids=False,
+    ).to(model.device)
+
     set_seed(100)
     outputs = model.generate(
-        **inputs, 
-        do_sample=True, 
+        **inputs,
+        do_sample=True,
         num_beams=1,
         num_return_sequences=num_samples,
         return_dict_in_generate=False,
         output_scores=False,
         output_hidden_states=False,
-        max_new_tokens=20, 
-        pad_token_id=tokenizer.eos_token_id)
-    
-    generated_token_ids = outputs[:, inputs.input_ids.shape[1]:]
-    generated_texts = tokenizer.batch_decode(generated_token_ids, skip_special_tokens=True)
+        max_new_tokens=20,
+        pad_token_id=tokenizer.eos_token_id,
+    )
+
+    generated_token_ids = outputs[:, inputs.input_ids.shape[1] :]
+    generated_texts = tokenizer.batch_decode(
+        generated_token_ids, skip_special_tokens=True
+    )
     generated_texts = [text.strip() for text in generated_texts]
     # generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
     # new_generated_texts = [gen[len(prompt):] for gen, prompt in zip(generated_texts, [prompt for prompt in prompts for _ in range(100)])]
     # 将 [batch * num_samples] 平铺结果按 100 一组切回 [batch, num_samples]
-    split_generated_texts = [generated_texts[i:i+100] for i in range(0, len(generated_texts), 100)]
+    split_generated_texts = [
+        generated_texts[i : i + 100] for i in range(0, len(generated_texts), 100)
+    ]
     return split_generated_texts
+
 
 def greedy_generation(model, tokenizer, prompts):
     """贪心解码，生成每条提示的一条答案。"""
@@ -138,17 +159,25 @@ def greedy_generation(model, tokenizer, prompts):
     model.generation_config.pad_token_id = tokenizer.eos_token_id
 
     inputs = tokenizer(
-        prompts, return_tensors="pt", padding=True, padding_side='left',
-        truncation=True, return_token_type_ids=False).to(model.device)
-    
+        prompts,
+        return_tensors="pt",
+        padding=True,
+        padding_side="left",
+        truncation=True,
+        return_token_type_ids=False,
+    ).to(model.device)
+
     outputs = model.generate(
-        **inputs, 
+        **inputs,
         pad_token_id=tokenizer.eos_token_id,
         do_sample=False,
-        max_new_tokens=20)
-    
-    generated_token_ids = outputs[:, inputs.input_ids.shape[1]:]
-    generated_texts = tokenizer.batch_decode(generated_token_ids, skip_special_tokens=True)
+        max_new_tokens=20,
+    )
+
+    generated_token_ids = outputs[:, inputs.input_ids.shape[1] :]
+    generated_texts = tokenizer.batch_decode(
+        generated_token_ids, skip_special_tokens=True
+    )
     generated_texts = [text.strip() for text in generated_texts]
     # new_generated_texts = [gen[len(prompt):] for gen, prompt in zip(generated_texts, [prompt for prompt in prompts for _ in range(100)])]
     return generated_texts
@@ -156,14 +185,15 @@ def greedy_generation(model, tokenizer, prompts):
 
 def normalize_answer(s):
     """Lower text and remove punctuation, articles, and extra whitespace."""
+
     def remove_articles(text):
-        return re.sub(r'\b(a|an|the)\b', ' ', text)
+        return re.sub(r"\b(a|an|the)\b", " ", text)
 
     def white_space_fix(text):
-        return ' '.join(text.split())
+        return " ".join(text.split())
 
     def remove_punc(text):
-        return ''.join(ch for ch in text if ch not in string.punctuation)
+        return "".join(ch for ch in text if ch not in string.punctuation)
 
     def lower(text):
         return text.lower()
@@ -174,7 +204,8 @@ def normalize_answer(s):
         return str(s).strip()
     else:
         return ""
-    
+
+
 # def partial_match(prediction, gold_answers, birdirect=False):
 #     """Return 1 if the prediction matches any gold answer after normalization."""
 #     pred_norm = normalize_answer(prediction)
@@ -195,15 +226,23 @@ def is_matched_str(pred_tokens, gold_tokens, birdirectional=True):
 
     判断 pred 是否包含 gold 子序列，或（可选）gold 是否包含 pred 子序列。
     """
-    if any(" ".join(gold_tokens) == " ".join(pred_tokens[i:i+len(gold_tokens)]) for i in range(len(pred_tokens))):
+    if any(
+        " ".join(gold_tokens) == " ".join(pred_tokens[i : i + len(gold_tokens)])
+        for i in range(len(pred_tokens))
+    ):
         return True
-    elif birdirectional and any(" ".join(pred_tokens) == " ".join(gold_tokens[i:i+len(pred_tokens)]) for i in range(len(gold_tokens))):
+    elif birdirectional and any(
+        " ".join(pred_tokens) == " ".join(gold_tokens[i : i + len(pred_tokens)])
+        for i in range(len(gold_tokens))
+    ):
         return True
     return False
+
 
 def partial_match(pred, golds, birdirectional=True):
     """多参考答案上的部分匹配判定。"""
     return any(is_matched_str(pred, gold, birdirectional) for gold in golds)
+
 
 def partial_match_scores(predictions, gold_answers, birdirect=False):
     """批量计算部分匹配得分（0/1 平均）。
@@ -217,4 +256,4 @@ def partial_match_scores(predictions, gold_answers, birdirect=False):
     for prediction, _gold_answers in zip(predictions, gold_answers):
         score = partial_match(prediction, _gold_answers, birdirect)
         scores.append(int(score))
-    return sum(scores)/len(scores)
+    return sum(scores) / len(scores)

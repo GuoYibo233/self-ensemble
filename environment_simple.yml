@@ -1,0 +1,15 @@
+name: self-ensemble-debug
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pytorch
+  - numpy
+  - pandas
+  - tqdm
+  - pip
+  - pip:
+    - transformers>=4.20.0
+    - datasets>=2.0.0
