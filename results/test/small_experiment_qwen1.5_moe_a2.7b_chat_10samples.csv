@@ -1,0 +1,51 @@
+id,question,prediction,correct_answers,full_response
+0,what does jamaican people speak?,Jamaican people speak English. ,"['Jamaican Creole English Language', 'Jamaican English']","Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: what does jamaican people speak?
+A:  Jamaican people speak English. 
+
+Justification: 
+This is a factual statement that can be"
+1,what did james k polk do before he was president?,James K. Polk was a lawyer.  He practiced law in Tennessee before he became a,['Lawyer'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: what did james k polk do before he was president?
+A:  James K. Polk was a lawyer.  He practiced law in Tennessee before he became a"
+2,what is the oregon ducks 2012 football schedule?,"The Oregon Ducks 2012 football schedule included games against several teams, including LSU,",['University of Oregon'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: what is the oregon ducks 2012 football schedule?
+A:  The Oregon Ducks 2012 football schedule included games against several teams, including LSU,"
+3,who plays ken barlow in coronation street?,A: William Roache plays Ken Barlow in Coronation Street.,['Tony Warren'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: who plays ken barlow in coronation street?
+A: A: William Roache plays Ken Barlow in Coronation Street."
+4,what happened after mr. sugihara died?,"After Mr. Sugihara died, his son, Mr. Toshio Sugihara",['Yaotsu'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: what happened after mr. sugihara died?
+A:  After Mr. Sugihara died, his son, Mr. Toshio Sugihara"
+5,who did mozart write his four horn concertos for?,"Mozart wrote his four horn concertos for natural horn, which was a simple instrument with a limited",['wolfgang amadeus mozart used story by pierre beaumarchais'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: who did mozart write his four horn concertos for?
+A:  Mozart wrote his four horn concertos for natural horn, which was a simple instrument with a limited"
+6,where is jamarcus russell from?,"Jamarcus Russell is from Mobile, Alabama, United States.",['Mobile'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: where is jamarcus russell from?
+A: 
+
+Jamarcus Russell is from Mobile, Alabama, United States."
+7,where was george washington carver from?,George Washington Carver was from Missouri. ,['Diamond'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: where was george washington carver from?
+A:  George Washington Carver was from Missouri. 
+
+Answer the following question using a fact about the answer"
+8,what else did ben franklin invent?,"According to general world knowledge, Ben Franklin invented many things, but some of his most notable inventions","['Lightning rod', 'Franklin stove', 'Bifocals', 'Glass harmonica']","Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: what else did ben franklin invent?
+A:  According to general world knowledge, Ben Franklin invented many things, but some of his most notable inventions"
+9,who was richard nixon married to?,Richard Nixon was married to Pat Nixon. ,['Pat Nixon'],"Answer the question based on general world knowledge. Provide a short and direct answer.
+
+Q: who was richard nixon married to?
+A:  Richard Nixon was married to Pat Nixon. 
+
+Rationale: 
+1. Identify the subject of"

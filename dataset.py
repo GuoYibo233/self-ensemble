@@ -14,7 +14,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils import set_seed
 
-DATATASET_ROOT = "/home/xzhao/workspace/self-ensemble/datasets"
+DATATASET_ROOT = "/net/tokyo100-10g/data/str01_01/yguo/datasets"
 
 
 def string_to_id(s):
@@ -167,11 +167,11 @@ class WebQADataset(ParaPharaseDataset):
 
     @property
     def dataset_root(self):
-        return os.path.join(DATATASET_ROOT, "webqa", self.model_name)
+        return os.path.join("./results", "webqa", self.model_name)
     
     @property
     def dataset_path(self):
-        return os.path.join(self.dataset_root, "paraphrases_dataset")
+        return os.path.join(DATATASET_ROOT, "webqa", "paraphrases_dataset")
 
     @property
     def instruction(self):
@@ -247,7 +247,7 @@ class MyriadLamaDataset(ParaPharaseDataset):
 
     @property
     def dataset_root(self):
-        return os.path.join(DATATASET_ROOT, "myriadlama", self.model_name)
+        return os.path.join("./results", "myriadlama", self.model_name)
     
     @property
     def dataset_path(self):
