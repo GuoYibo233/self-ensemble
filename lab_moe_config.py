@@ -22,7 +22,7 @@ LAB_MOE_MODELS = {
     "qwen1.5_moe_a2.7b": {
         "hf_name": "Qwen/Qwen1.5-MoE-A2.7B",
         "total_params": "14.3B",
-        "active_params": "2.7B", 
+        "active_params": "2.7B",
         "memory_requirement": "~6GB",
         "recommended_gpus": ["RTX 3090", "RTX 4090", "A100"],
         "batch_size_recommendations": {
@@ -31,7 +31,7 @@ LAB_MOE_MODELS = {
             "1x A100": 8
         }
     },
-    
+
     "qwen1.5_moe_a2.7b_chat": {
         "hf_name": "Qwen/Qwen1.5-MoE-A2.7B-Chat",
         "total_params": "14.3B",
@@ -41,11 +41,11 @@ LAB_MOE_MODELS = {
         "recommended_gpus": ["RTX 3090", "RTX 4090", "A100"],
         "batch_size_recommendations": {
             "1x RTX 3090": 4,
-            "1x RTX 4090": 6, 
+            "1x RTX 4090": 6,
             "1x A100": 8
         }
     },
-    
+
     # 中等规模MoE - 如果实验室有充足GPU资源
     "mixtral_7b_instruct": {
         "hf_name": "mistralai/Mixtral-8x7B-Instruct-v0.1",
@@ -84,6 +84,7 @@ DISTRIBUTED_CONFIG = {
     "find_unused_parameters": True,  # MoE可能需要这个设置
 }
 
+
 def get_lab_model_path(model_name):
     """获取实验室服务器上的模型路径"""
     if model_name in LAB_MOE_MODELS:
@@ -91,20 +92,22 @@ def get_lab_model_path(model_name):
         return os.path.join(cache_dir, model_name)
     return LAB_MOE_MODELS[model_name]["hf_name"]
 
+
 def get_optimal_batch_size(model_name, gpu_info):
     """根据GPU信息推荐最优batch size"""
     if model_name not in LAB_MOE_MODELS:
         return 4  # 默认值
-    
+
     model_config = LAB_MOE_MODELS[model_name]
     batch_recommendations = model_config.get("batch_size_recommendations", {})
-    
+
     # 简单匹配逻辑，实际使用时可以更智能
     for gpu_config, batch_size in batch_recommendations.items():
         if gpu_info in gpu_config:
             return batch_size
-    
+
     return 4  # 保守默认值
+
 
 def setup_lab_environment():
     """设置实验室环境"""
@@ -113,12 +116,13 @@ def setup_lab_environment():
             os.makedirs(path, exist_ok=True)
             print(f"✅ Created directory: {path}")
 
+
 if __name__ == "__main__":
     print("🏭 Laboratory Server MoE Configuration")
     print("=" * 50)
-    
+
     setup_lab_environment()
-    
+
     print("\n📋 Available MoE Models:")
     for model_name, config in LAB_MOE_MODELS.items():
         print(f"\n🧠 {model_name}:")
