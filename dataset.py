@@ -352,9 +352,11 @@ class MyriadLamaDataset(ParaPharaseDataset):
             # 从2000个样本中随机抽取250个用于快速测试
             import random
             random.seed(42)
-            indices = random.sample(range(len(full_ds)), min(250, len(full_ds)))
+            indices = random.sample(
+                range(len(full_ds)), min(250, len(full_ds)))
             subset_ds = full_ds.select(indices)
-            print(f"Selected {len(subset_ds)} samples from {len(full_ds)} total samples")
+            print(
+                f"Selected {len(subset_ds)} samples from {len(full_ds)} total samples")
             return subset_ds
 
         print("Creating MyriadLAMA dataset...")
