@@ -1,1 +1,45 @@
+# Datasets and cache
 datasets/
+data/
+*.feather
+.cache/
+
+# Models cache
+models/
+checkpoints/
+
+# Debug and logs
+*.log
+flexattention_debug.log
+debug_output/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
