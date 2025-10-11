@@ -27,10 +27,12 @@ env/
 ENV/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
+# Keep .vscode/launch.json for debugging, but ignore other settings
+.vscode/*
+!.vscode/launch.json
 
 # OS
 .DS_Store
