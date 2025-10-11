@@ -21,6 +21,11 @@ from tqdm import tqdm
 import multiprocessing as mp
 import warnings
 
+# 设置Hugging Face缓存目录到您的文件夹
+os.environ["HF_HOME"] = "/net/tokyo100-10g/data/str01_01/y-guo/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = "/net/tokyo100-10g/data/str01_01/y-guo/hf_cache/transformers"
+os.environ["HF_DATASETS_CACHE"] = "/net/tokyo100-10g/data/str01_01/y-guo/hf_cache/datasets"
+
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -28,7 +33,7 @@ from constants import MODEL_PATHs
 
 # Try to import FlexAttention
 try:
-    from torch.nn.attention.flex_attention import flex_attention, create_block_mask
+    from torch.nn.attention.flex_attention import flex_attention, create_mask
     FLEX_ATTENTION_AVAILABLE = True
     print("✅ FlexAttention is available")
 except ImportError:
@@ -236,15 +241,14 @@ class FlexAttentionWrapper:
                     query_states, key_states, cos, sin
                 )
             
-            # Create block mask for FlexAttention
+            # Create mask for FlexAttention
             try:
-                block_mask = create_block_mask(
+                attention_mask = create_mask(
                     self.current_mask_mod,
                     B=bsz,
                     H=num_heads, 
                     Q_LEN=q_len,
-                    KV_LEN=q_len,
-                    device=query_states.device
+                    KV_LEN=q_len
                 )
                 
                 # Use FlexAttention
@@ -252,7 +256,7 @@ class FlexAttentionWrapper:
                     query_states,
                     key_states,
                     value_states,
-                    block_mask=block_mask
+                    attn_mask=attention_mask
                 )
             except Exception as e:
                 # Fallback to standard SDPA
@@ -305,7 +309,7 @@ class FlexAttentionWrapper:
 # ==============================================================================
 
 @torch.no_grad()
-def flex_attention_generation(prompts, max_new_tokens=20):
+def flex_attention_generation(prompts, tokenizer, model, max_new_tokens=20):
     """
     Generate text using FlexAttention-based ensemble.
     
@@ -316,6 +320,8 @@ def flex_attention_generation(prompts, max_new_tokens=20):
     
     Args:
         prompts: List of paraphrase prompts (typically 5)
+        tokenizer: Tokenizer instance
+        model: Model instance
         max_new_tokens: Maximum tokens to generate
         
     Returns:
@@ -531,7 +537,7 @@ if __name__ == "__main__":
                 prompts.append(prompt[0])
             
             # NEW: Use FlexAttention generation
-            generation = flex_attention_generation(prompts, max_new_tokens=20)
+            generation = flex_attention_generation(prompts, tokenizer, model, max_new_tokens=20)
             
             # Reused pattern: Extract prediction (from generate.py)
             prediction = generation.strip().split('\n')[0]

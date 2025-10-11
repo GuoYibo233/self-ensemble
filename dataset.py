@@ -8,13 +8,19 @@ from abc import abstractmethod
 
 from constants import MODEL_PATHs
 
+# 设置Hugging Face缓存目录到您的文件夹
+os.environ["HF_HOME"] = "/net/tokyo100-10g/data/str01_01/y-guo/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = "/net/tokyo100-10g/data/str01_01/y-guo/hf_cache/transformers"
+os.environ["HF_DATASETS_CACHE"] = "/net/tokyo100-10g/data/str01_01/y-guo/hf_cache/datasets"
+
 from torch.utils.data import DataLoader
 from datasets import load_dataset, load_from_disk, Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils import set_seed
 
-DATATASET_ROOT = "/home/xzhao/workspace/self-ensemble/datasets"
+# 更新为您的数据集目录
+DATATASET_ROOT = "/net/tokyo100-10g/data/str01_01/y-guo/datasets"
 
 
 def string_to_id(s):
