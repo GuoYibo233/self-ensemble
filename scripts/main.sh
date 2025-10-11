@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# 切换到工作目录
+cd /home/y-guo/self-ensemble/self-ensemble
+
 MODEL_NAME=$1
 GPU_COUNT=$2
 

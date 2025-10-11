@@ -13,4 +13,5 @@ MODEL_PATHs = {
     "qwen3_1.7b": "Qwen/Qwen3-1.7B",
     "qwen3_4b": "Qwen/Qwen3-4B",
     "qwen3_8b": "Qwen/Qwen3-8B",
+    "qwen1.5_moe_a2.7b_chat": "/net/tokyo100-10g/data/str01_01/y-guo/models/moe/qwen1.5_moe_a2.7b_chat",
 }
