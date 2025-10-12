@@ -1,0 +1,33 @@
+# FlexAttention Self-Ensemble Requirements
+# Python 3.10+ required (FlexAttention needs PyTorch 2.5+ which requires Python 3.10+)
+
+# IMPORTANT: Install PyTorch FIRST before other packages
+# Run this command separately:
+# pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+
+# After installing PyTorch, install these packages:
+
+# Core ML/NLP libraries
+transformers>=4.30.0
+datasets>=2.14.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# NLP tools
+spacy>=3.5.0
+# After installing spacy, run: python -m spacy download en_core_web_lg
+
+# Progress bars and utilities
+tqdm>=4.65.0
+
+# Development and testing (optional)
+jupyter>=1.0.0
+ipykernel>=6.25.0
+
+# Additional dependencies for feather format
+feather-format
+pyarrow
+accelerate
+

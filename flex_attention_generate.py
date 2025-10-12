@@ -411,8 +411,8 @@ if __name__ == "__main__":
         help="Dataset to use"
     )
     parser.add_argument(
-        "--device", type=str, default="auto",
-        help="Device for model"
+        "--device", type=str, default="cuda",
+        help="Device for model (default: cuda)"
     )
     parser.add_argument(
         "--lemmaize", action="store_true",
