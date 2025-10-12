@@ -16,11 +16,16 @@ This guide gets you up and running with FlexAttention debugging in under 5 minut
 conda create -n flexattention python=3.10 -y
 conda activate flexattention
 
+# Option 1: Install from environment.yml (recommended)
+conda env create -f environment.yml
+conda activate flexattention
+
+# Option 2: Install manually
 # Install PyTorch with FlexAttention support (CUDA version)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Install other dependencies
-pip install transformers pandas numpy tqdm datasets spacy
+pip install -r requirements.txt
 
 # Download spaCy model
 python3 -m spacy download en_core_web_lg

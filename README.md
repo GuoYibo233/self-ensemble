@@ -74,7 +74,15 @@ FlexAttention ensemble is a new method that:
 conda create -n flexattention python=3.10 -y
 conda activate flexattention
 
-# 2. Install dependencies (CUDA version)
+# 2. Install dependencies
+# Option 1: Using environment.yml (easiest)
+conda env create -f environment.yml
+conda activate flexattention
+
+# Option 2: Using requirements.txt
+pip install -r requirements.txt
+
+# Option 3: Manual installation
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 pip install transformers pandas numpy tqdm datasets spacy
 python3 -m spacy download en_core_web_lg
@@ -196,6 +204,8 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 ├── generate.py                    # Original ensemble methods
 ├── dataset.py                     # Dataset loading
 ├── constants.py                   # Configuration
+├── requirements.txt               # Python dependencies
+├── environment.yml                # Conda environment file
 │
 ├── tools/                         # Debugging and utilities
 │   ├── validate_flexattention_env.py  # Environment validation

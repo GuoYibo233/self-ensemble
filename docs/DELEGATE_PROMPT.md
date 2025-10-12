@@ -51,6 +51,14 @@ python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --ma
 conda create -n flexattention python=3.10 -y
 conda activate flexattention
 
+# Option 1: Install from environment.yml (easiest)
+conda env create -f environment.yml
+conda activate flexattention
+
+# Option 2: Install from requirements.txt
+pip install -r requirements.txt
+
+# Option 3: Install manually
 # Install PyTorch with FlexAttention support (CUDA version)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 

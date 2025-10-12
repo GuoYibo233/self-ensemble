@@ -10,14 +10,18 @@ It shows detailed information about each step of the generation process includin
 - Segment isolation verification
 
 Usage:
-    python3 debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 2
-    python3 debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 1 --verbose
-    python3 debug_flexattention.py --dataset webqa --model llama3.2_3b_it --indexs 0,1,2 --max-samples 1
+    python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 2
+    python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 1 --verbose
+    python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --indexs 0,1,2 --max-samples 1
 """
 
 import os
 import sys
 import argparse
+
+# Add parent directory to path to import from root
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import numpy as np
 from transformers import AutoTokenizer, AutoModelForCausalLM
