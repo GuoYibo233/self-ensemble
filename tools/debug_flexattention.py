@@ -353,8 +353,8 @@ def main():
         help="Model name from constants.MODEL_PATHs"
     )
     parser.add_argument(
-        "--device", type=str, default="auto",
-        help="Device for model"
+        "--device", type=str, default="cuda",
+        help="Device for model (default: cuda)"
     )
     parser.add_argument(
         "--max-samples", type=int, default=1,

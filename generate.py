@@ -148,7 +148,7 @@ if __name__ == "__main__":
                         help="Integration method for ensemble generation")
     parser.add_argument("--model", type=str, default="llama3.2_3b_it", help="Path to the pre-trained model.")
     parser.add_argument("--dataset", type=str, required=True, choices=["webqa", "myriadlama"], help="Dataset to use for generating paraphrases.")    
-    parser.add_argument("--device", type=str, default="auto", help="Device to run the model on.")
+    parser.add_argument("--device", type=str, default="cuda", help="Device to run the model on (default: cuda).")
     parser.add_argument("--lemmaize", action="store_true", help="normalize predictions and answers to lemmas.")
     parser.add_argument("--indexs", type=str, default=None, help="Indexs of the dataset to use for generation. If None, use all.")
     parser.add_argument("--num_ensemble", type=int, default=6, help="Number of models to ensemble. Only used for 'max' and 'avg' methods.")

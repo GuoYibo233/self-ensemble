@@ -64,20 +64,25 @@ FlexAttention ensemble is a new method that:
 - Python 3.10+
 - PyTorch 2.5+ or nightly (for FlexAttention)
 - 20GB disk space
-- (Optional) NVIDIA GPU with CUDA
+- NVIDIA GPU with CUDA support
+- Conda/Miniconda installed
 
 ### Quick Setup
 
 ```bash
-# 1. Install dependencies
+# 1. Create conda environment
+conda create -n flexattention python=3.10 -y
+conda activate flexattention
+
+# 2. Install dependencies (CUDA version)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 pip install transformers pandas numpy tqdm datasets spacy
 python3 -m spacy download en_core_web_lg
 
-# 2. Validate environment
+# 3. Validate environment
 python3 tools/validate_flexattention_env.py --test-flex-attention
 
-# 3. Download resources
+# 4. Download resources
 bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it
 ```
 

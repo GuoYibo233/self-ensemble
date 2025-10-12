@@ -6,17 +6,17 @@ This guide gets you up and running with FlexAttention debugging in under 5 minut
 
 - Python 3.10+
 - 20GB free disk space
-- (Optional) NVIDIA GPU with CUDA support
+- NVIDIA GPU with CUDA support
+- Conda/Miniconda installed
 
 ## Step 1: Install Dependencies (2 minutes)
 
 ```bash
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Linux/macOS
-# or: venv\Scripts\activate  # On Windows
+# Create and activate conda environment
+conda create -n flexattention python=3.10 -y
+conda activate flexattention
 
-# Install PyTorch with FlexAttention support
+# Install PyTorch with FlexAttention support (CUDA version)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Install other dependencies

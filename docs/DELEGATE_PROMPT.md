@@ -39,19 +39,19 @@ python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --ma
 
 - **Python**: 3.10 or higher
 - **PyTorch**: 2.5+ or nightly build (for FlexAttention support)
-- **CUDA**: 11.8+ or 12.1+ (if using GPU)
+- **CUDA**: 11.8+ or 12.1+ (required for GPU)
 - **RAM**: 16GB minimum, 32GB recommended
 - **Disk Space**: 20GB minimum for models and datasets
+- **Conda**: Miniconda or Anaconda installed
 
 ### Step 1: Install Base Dependencies
 
 ```bash
-# Create a virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate  # On Linux/macOS
-# or: venv\Scripts\activate  # On Windows
+# Create and activate conda environment (recommended)
+conda create -n flexattention python=3.10 -y
+conda activate flexattention
 
-# Install PyTorch with FlexAttention support
+# Install PyTorch with FlexAttention support (CUDA version)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Install other dependencies
@@ -416,12 +416,12 @@ python3 -c "from torch.nn.attention.flex_attention import flex_attention; print(
 **Solutions:**
 ```bash
 # Use smaller model
-python3 flex_attention_generate.py --model smaller_model_name
+python3 flex_attention_generate.py --model smaller_model_name --device cuda
 
 # Reduce batch size in dataset.py
 # Edit: dataloader = dataset.get_dataloader(batch_size=4, shuffle=False)
 
-# Use CPU (slower)
+# If still having issues, use CPU (slower)
 python3 flex_attention_generate.py --device cpu
 ```
 

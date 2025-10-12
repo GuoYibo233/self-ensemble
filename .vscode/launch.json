@@ -11,7 +11,7 @@
                 "--dataset", "webqa",
                 "--model", "llama3.2_3b_it",
                 "--num_paraphrases", "3",
-                "--device", "auto"
+                "--device", "cuda"
             ],
             "justMyCode": false
         },
@@ -25,7 +25,7 @@
                 "--dataset", "myriadlama",
                 "--model", "llama3.2_3b_it",
                 "--num_paraphrases", "3",
-                "--device", "auto"
+                "--device", "cuda"
             ],
             "justMyCode": false
         },

@@ -25,6 +25,10 @@ __pycache__/
 venv/
 env/
 ENV/
+# Conda environments
+conda/
+envs/
+.conda/
 
 # IDE
 .idea/
