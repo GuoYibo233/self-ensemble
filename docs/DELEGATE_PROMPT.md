@@ -37,7 +37,7 @@ python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --ma
 
 ### Prerequisites
 
-- **Python**: 3.10 or higher
+- **Python**: 3.9 or higher (tested on 3.9 and 3.10)
 - **PyTorch**: 2.5+ or nightly build (for FlexAttention support)
 - **CUDA**: 11.8+ or 12.1+ (required for GPU)
 - **RAM**: 16GB minimum, 32GB recommended
@@ -48,17 +48,24 @@ python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --ma
 
 ```bash
 # Create and activate conda environment (recommended)
-conda create -n flexattention python=3.10 -y
-conda activate flexattention
 
-# Option 1: Install from environment.yml (easiest)
+# Option 1: Linux system with CUDA 12.1 (Ubuntu 22.04+)
+# Uses stable PyTorch 2.5.1 with pre-configured dependencies
+conda env create -f environment_linux.yml
+conda activate self-ensemble-debug
+
+# Option 2: General conda environment with PyTorch nightly
 conda env create -f environment.yml
 conda activate flexattention
 
-# Option 2: Install from requirements.txt
+# Option 3: Install from requirements.txt
+conda create -n flexattention python=3.9 -y
+conda activate flexattention
 pip install -r requirements.txt
 
-# Option 3: Install manually
+# Option 4: Install manually
+conda create -n flexattention python=3.9 -y
+conda activate flexattention
 # Install PyTorch with FlexAttention support (CUDA version)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 

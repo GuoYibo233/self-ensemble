@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.9  # Changed to 3.9 for better compatibility (3.10+ also works)
   - pip
   - pip:
       # PyTorch nightly with FlexAttention support
@@ -26,4 +26,7 @@ dependencies:
 
 # After creating the environment, run:
 # conda activate flexattention
-# python3 -m spacy download en_core_web_lg
+# python -m spacy download en_core_web_lg
+
+# For Linux systems with existing CUDA 12.1 setup, use environment_linux.yml instead
+

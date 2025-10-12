@@ -31,6 +31,7 @@ This repository implements self-ensemble methods for natural language generation
 | Document | Description |
 |----------|-------------|
 | **[docs/QUICKSTART.md](docs/QUICKSTART.md)** | 5-minute setup guide |
+| **[docs/LINUX_SETUP.md](docs/LINUX_SETUP.md)** | Linux-specific setup (Ubuntu 22.04, RTX A6000) |
 | **[docs/DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md)** | Complete debugging guide |
 | **[docs/README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md)** | FlexAttention overview |
 | **[docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** | API quick reference |
@@ -61,7 +62,7 @@ FlexAttention ensemble is a new method that:
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.9+
 - PyTorch 2.5+ or nightly (for FlexAttention)
 - 20GB disk space
 - NVIDIA GPU with CUDA support
@@ -71,26 +72,30 @@ FlexAttention ensemble is a new method that:
 
 ```bash
 # 1. Create conda environment
-conda create -n flexattention python=3.10 -y
-conda activate flexattention
+# Option 1: Linux with CUDA 12.1 (Ubuntu 22.04+, RTX A6000)
+conda env create -f environment_linux.yml
+conda activate self-ensemble-debug
 
-# 2. Install dependencies
-# Option 1: Using environment.yml (easiest)
+# Option 2: General environment with PyTorch nightly
 conda env create -f environment.yml
 conda activate flexattention
 
-# Option 2: Using requirements.txt
+# Option 3: Using requirements.txt
+conda create -n flexattention python=3.9 -y
+conda activate flexattention
 pip install -r requirements.txt
 
-# Option 3: Manual installation
+# Option 4: Manual installation
+conda create -n flexattention python=3.9 -y
+conda activate flexattention
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 pip install transformers pandas numpy tqdm datasets spacy
-python3 -m spacy download en_core_web_lg
+python -m spacy download en_core_web_lg
 
-# 3. Validate environment
+# 2. Validate environment
 python3 tools/validate_flexattention_env.py --test-flex-attention
 
-# 4. Download resources
+# 3. Download resources
 bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it
 ```
 
@@ -205,7 +210,8 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 ├── dataset.py                     # Dataset loading
 ├── constants.py                   # Configuration
 ├── requirements.txt               # Python dependencies
-├── environment.yml                # Conda environment file
+├── environment.yml                # Conda environment file (general)
+├── environment_linux.yml          # Linux-specific environment (Ubuntu 22.04, CUDA 12.1)
 │
 ├── tools/                         # Debugging and utilities
 │   ├── validate_flexattention_env.py  # Environment validation
@@ -215,6 +221,7 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 │
 ├── docs/                          # Documentation
 │   ├── QUICKSTART.md              # Quick start guide
+│   ├── LINUX_SETUP.md             # Linux-specific setup guide
 │   ├── DELEGATE_PROMPT.md         # Complete debugging guide
 │   ├── README_FLEXATTENTION.md    # FlexAttention overview
 │   ├── QUICK_REFERENCE.md         # API reference
