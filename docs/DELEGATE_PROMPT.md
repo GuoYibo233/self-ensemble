@@ -37,7 +37,7 @@ python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --ma
 
 ### Prerequisites
 
-- **Python**: 3.9 or higher (tested on 3.9 and 3.10)
+- **Python**: 3.10 or higher (FlexAttention requires Python 3.10+)
 - **PyTorch**: 2.5+ or nightly build (for FlexAttention support)
 - **CUDA**: 11.8+ or 12.1+ (required for GPU)
 - **RAM**: 16GB minimum, 32GB recommended
@@ -58,16 +58,20 @@ conda activate self-ensemble-debug
 conda env create -f environment.yml
 conda activate flexattention
 
-# Option 3: Install from requirements.txt
-conda create -n flexattention python=3.9 -y
+# Option 3: Manual installation with pip
+conda create -n flexattention python=3.10 -y
 conda activate flexattention
+
+# Install PyTorch FIRST (FlexAttention requires this)
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+
+# Then install other dependencies
 pip install -r requirements.txt
 
-# Option 4: Install manually
-conda create -n flexattention python=3.9 -y
+# Option 4: Complete manual install
+conda create -n flexattention python=3.10 -y
 conda activate flexattention
-# Install PyTorch with FlexAttention support (CUDA version)
-pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Install other dependencies
 pip install transformers pandas numpy tqdm datasets spacy

@@ -1,10 +1,11 @@
 # FlexAttention Self-Ensemble Requirements
-# Python 3.9+ required (tested on 3.9 and 3.10)
+# Python 3.10+ required (FlexAttention needs PyTorch 2.5+ which requires Python 3.10+)
 
-# PyTorch with FlexAttention support (nightly build required)
-# Install with: pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
---extra-index-url https://download.pytorch.org/whl/nightly/cu121
-torch>=2.5.0.dev
+# IMPORTANT: Install PyTorch FIRST before other packages
+# Run this command separately:
+# pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+
+# After installing PyTorch, install these packages:
 
 # Core ML/NLP libraries
 transformers>=4.30.0

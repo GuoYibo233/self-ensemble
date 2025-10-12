@@ -5,7 +5,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.9
+  - python=3.10  # FlexAttention requires Python 3.10+ with PyTorch 2.5+
   - pytorch=2.5.1
   - torchvision=0.20.1
   - torchaudio=2.5.1
@@ -26,6 +26,8 @@ dependencies:
 
 # Environment for Linux systems with CUDA 12.1
 # Optimized for NVIDIA RTX A6000 GPUs
+# IMPORTANT: FlexAttention requires Python 3.10+ with PyTorch 2.5+
 # After creating the environment, run:
 # conda activate self-ensemble-debug
 # python -m spacy download en_core_web_lg
+

@@ -6,17 +6,29 @@ This guide provides configuration instructions for running FlexAttention on Linu
 
 **Verified Configuration:**
 - OS: Ubuntu 22.04.4 LTS
-- Python: 3.9.23
+- Python: 3.10+ (FlexAttention requires Python 3.10+, not 3.9)
 - PyTorch: 2.5.1
 - CUDA: 12.1
 - GPU: 10× NVIDIA RTX A6000 (48GB each)
 - RAM: 251GB
 
+**IMPORTANT**: FlexAttention requires Python 3.10 or higher. If your existing environment uses Python 3.9, you'll need to recreate it with Python 3.10.
+
 ## Quick Start for Linux Systems
 
-### 1. Use Existing Environment (Recommended)
+### 1. Check Your Python Version
 
-If you already have the `self-ensemble-debug` environment:
+```bash
+# If using existing environment
+conda activate self-ensemble-debug
+python --version  # Should be 3.10+, not 3.9
+
+# If Python is 3.9, you need to recreate the environment
+```
+
+### 2. Use Existing Environment (if Python 3.10+)
+
+If you already have a Python 3.10+ environment with PyTorch 2.5.1:
 
 ```bash
 # Activate the environment
@@ -31,6 +43,8 @@ python -m spacy download en_core_web_lg
 
 ### 2. Create New Environment from Linux Config
 
+**IMPORTANT**: The environment file has been updated to use Python 3.10 (required for FlexAttention).
+
 ```bash
 # Create environment from Linux-specific config
 conda env create -f environment_linux.yml
@@ -41,8 +55,10 @@ conda activate self-ensemble-debug
 # Download spaCy model
 python -m spacy download en_core_web_lg
 
-# Verify installation
+# Verify installation (should show Python 3.10+)
 python -c "
+import sys
+print('Python:', sys.version)
 import torch
 print('PyTorch:', torch.__version__)
 print('CUDA available:', torch.cuda.is_available())
@@ -166,6 +182,28 @@ python tools/example_flexattention.py
 
 ## Common Issues and Solutions
 
+### Python Version Compatibility
+
+**Error:** `FlexAttention not available` or `ModuleNotFoundError: No module named 'torch.nn.attention.flex_attention'`
+
+**Solution:**
+
+FlexAttention requires Python 3.10 or higher with PyTorch 2.5+. Python 3.9 is not compatible.
+
+```bash
+# Check your Python version
+python --version
+
+# If Python 3.9, recreate environment with Python 3.10
+conda deactivate
+conda env remove -n self-ensemble-debug
+conda env create -f environment_linux.yml
+conda activate self-ensemble-debug
+
+# Verify FlexAttention is available
+python -c "from torch.nn.attention.flex_attention import flex_attention; print('FlexAttention: ✅')"
+```
+
 ### CUDA Version Mismatch
 
 If you see CUDA version warnings:
@@ -177,6 +215,31 @@ python -c "import torch; print(torch.version.cuda)"  # PyTorch CUDA (12.1)
 ```
 
 The system CUDA (12.2) is newer than PyTorch CUDA (12.1), which is fine and fully compatible.
+
+### torch Module Not Found After pip install
+
+**Error:** `ModuleNotFoundError: No module named 'torch'` after running `pip install -r requirements.txt`
+
+**Solution:**
+
+PyTorch must be installed separately BEFORE other packages when using pip:
+
+```bash
+# 1. Install PyTorch first
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+
+# 2. Then install other requirements
+pip install -r requirements.txt
+
+# 3. Verify torch is installed
+python -c "import torch; print(torch.__version__)"
+```
+
+**Better solution:** Use conda environment files which handle PyTorch installation automatically:
+
+```bash
+conda env create -f environment_linux.yml
+```
 
 ### Network Storage Latency
 
