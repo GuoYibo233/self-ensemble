@@ -212,8 +212,8 @@ def main():
     print("  3. How to isolate segments (paraphrases) during encoding")
     print("  4. How to enable fusion during generation")
     print("\nNext steps:")
-    print("  - Run: python3 debug_flexattention.py --dataset webqa --max-samples 1")
-    print("  - Read: DELEGATE_PROMPT.md for full debugging guide")
+    print("  - Run: python3 tools/debug_flexattention.py --dataset webqa --max-samples 1")
+    print("  - Read: docs/DELEGATE_PROMPT.md for full debugging guide")
     print("  - Explore: flex_attention_generate.py to see real implementation")
 
 

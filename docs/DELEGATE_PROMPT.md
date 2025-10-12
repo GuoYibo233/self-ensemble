@@ -22,13 +22,13 @@ This guide provides step-by-step instructions for understanding, validating, and
 
 ```bash
 # Validate your environment
-python3 validate_flexattention_env.py
+python3 tools/validate_flexattention_env.py
 
 # Download necessary resources (datasets and models)
-bash download_resources.sh --dataset webqa --model llama3.2_3b_it
+bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it
 
 # Run a debug session to understand the code flow
-python3 debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 2
+python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 2
 ```
 
 ---
@@ -64,7 +64,7 @@ python3 -m spacy download en_core_web_lg
 ### Step 2: Verify Installation
 
 ```bash
-python3 validate_flexattention_env.py
+python3 tools/validate_flexattention_env.py
 ```
 
 This script checks:
@@ -85,13 +85,13 @@ The `validate_flexattention_env.py` script performs comprehensive checks:
 
 ```bash
 # Basic validation
-python3 validate_flexattention_env.py
+python3 tools/validate_flexattention_env.py
 
 # Detailed validation with diagnostic output
-python3 validate_flexattention_env.py --verbose
+python3 tools/validate_flexattention_env.py --verbose
 
 # Test FlexAttention functionality
-python3 validate_flexattention_env.py --test-flex-attention
+python3 tools/validate_flexattention_env.py --test-flex-attention
 ```
 
 **What it checks:**
@@ -208,21 +208,21 @@ The `debug_flexattention.py` script provides detailed step-by-step insights:
 
 ```bash
 # Basic debug run (2 samples, verbose output)
-python3 debug_flexattention.py \
+python3 tools/debug_flexattention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --max-samples 2 \
     --verbose
 
 # Debug specific paraphrases
-python3 debug_flexattention.py \
+python3 tools/debug_flexattention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --indexs 0,1,2 \
     --max-samples 1
 
 # Interactive mode with breakpoints
-python3 debug_flexattention.py \
+python3 tools/debug_flexattention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --max-samples 1 \
@@ -289,7 +289,7 @@ python3 -m pdb flex_attention_generate.py \
             "name": "Debug FlexAttention (Debug Script)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/debug_flexattention.py",
+            "program": "${workspaceFolder}/tools/debug_flexattention.py",
             "console": "integratedTerminal",
             "args": [
                 "--dataset", "webqa",
@@ -336,16 +336,16 @@ Use the provided download script:
 
 ```bash
 # Download WebQA dataset and Llama model
-bash download_resources.sh --dataset webqa --model llama3.2_3b_it
+bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it
 
 # Download MyriadLAMA dataset
-bash download_resources.sh --dataset myriadlama --model llama3.2_3b_it
+bash tools/download_resources.sh --dataset myriadlama --model llama3.2_3b_it
 
 # Download only datasets (no models)
-bash download_resources.sh --dataset-only webqa
+bash tools/download_resources.sh --dataset-only webqa
 
 # List available resources
-bash download_resources.sh --list
+bash tools/download_resources.sh --list
 ```
 
 ### Manual Dataset Download
@@ -461,21 +461,21 @@ python3 -m spacy download en_core_web_sm
 pip install transformers pandas numpy tqdm datasets spacy
 
 # Verify environment
-python3 validate_flexattention_env.py
+python3 tools/validate_flexattention_env.py
 ```
 
 ### Debug Checklist
 
 When things don't work:
 
-- [ ] Run `python3 validate_flexattention_env.py` to check environment
+- [ ] Run `python3 tools/validate_flexattention_env.py` to check environment
 - [ ] Check Python version: `python3 --version` (should be 3.10+)
 - [ ] Check PyTorch version: `python3 -c "import torch; print(torch.__version__)"`
 - [ ] Check CUDA availability: `python3 -c "import torch; print(torch.cuda.is_available())"`
 - [ ] Check disk space: `df -h`
 - [ ] Check available RAM: `free -h`
 - [ ] Review logs in `flexattention_debug.log`
-- [ ] Try with minimal example: `python3 debug_flexattention.py --max-samples 1`
+- [ ] Try with minimal example: `python3 tools/debug_flexattention.py --max-samples 1`
 
 ### Getting Help
 
@@ -563,9 +563,9 @@ This guide provided:
 
 **Next Steps:**
 
-1. ✅ Run `python3 validate_flexattention_env.py`
-2. ✅ Download resources: `bash download_resources.sh --dataset webqa --model llama3.2_3b_it`
-3. ✅ Try debugging: `python3 debug_flexattention.py --max-samples 1 --verbose`
+1. ✅ Run `python3 tools/validate_flexattention_env.py`
+2. ✅ Download resources: `bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it`
+3. ✅ Try debugging: `python3 tools/debug_flexattention.py --max-samples 1 --verbose`
 4. ✅ Read the code: Start with `flex_attention_generate.py`
 5. ✅ Run full generation: `python3 flex_attention_generate.py --dataset webqa --model llama3.2_3b_it`
 

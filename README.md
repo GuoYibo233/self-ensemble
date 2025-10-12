@@ -6,9 +6,9 @@ This repository implements self-ensemble methods for natural language generation
 
 **New to this repository? Start here:**
 
-1. **[QUICKSTART.md](QUICKSTART.md)** - Get up and running in 5 minutes
-2. **[DELEGATE_PROMPT.md](DELEGATE_PROMPT.md)** - Complete debugging and validation guide
-3. **[README_FLEXATTENTION.md](README_FLEXATTENTION.md)** - FlexAttention overview
+1. **[QUICKSTART.md](docs/QUICKSTART.md)** - Get up and running in 5 minutes
+2. **[DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md)** - Complete debugging and validation guide
+3. **[README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md)** - FlexAttention overview
 
 ## 📚 What's in This Repository
 
@@ -21,23 +21,23 @@ This repository implements self-ensemble methods for natural language generation
 
 ### Debugging and Validation Tools
 
-- **`validate_flexattention_env.py`** - Environment validation script
-- **`debug_flexattention.py`** - Step-by-step debugging with detailed output
-- **`example_flexattention.py`** - Minimal working examples
-- **`download_resources.sh`** - Download datasets and models
+- **`tools/validate_flexattention_env.py`** - Environment validation script
+- **`tools/debug_flexattention.py`** - Step-by-step debugging with detailed output
+- **`tools/example_flexattention.py`** - Minimal working examples
+- **`tools/download_resources.sh`** - Download datasets and models
 
 ### Documentation
 
 | Document | Description |
 |----------|-------------|
-| **[QUICKSTART.md](QUICKSTART.md)** | 5-minute setup guide |
-| **[DELEGATE_PROMPT.md](DELEGATE_PROMPT.md)** | Complete debugging guide |
-| **[README_FLEXATTENTION.md](README_FLEXATTENTION.md)** | FlexAttention overview |
-| **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** | API quick reference |
-| **[FLEX_ATTENTION_IMPLEMENTATION.md](FLEX_ATTENTION_IMPLEMENTATION.md)** | Technical details |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Visual diagrams |
-| **[REUSE_VS_NEW_DETAILED.md](REUSE_VS_NEW_DETAILED.md)** | Component breakdown |
-| **[实现总结.md](实现总结.md)** | Chinese summary |
+| **[docs/QUICKSTART.md](docs/QUICKSTART.md)** | 5-minute setup guide |
+| **[docs/DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md)** | Complete debugging guide |
+| **[docs/README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md)** | FlexAttention overview |
+| **[docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** | API quick reference |
+| **[docs/FLEX_ATTENTION_IMPLEMENTATION.md](docs/FLEX_ATTENTION_IMPLEMENTATION.md)** | Technical details |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Visual diagrams |
+| **[docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md)** | Component breakdown |
+| **[docs/实现总结.md](docs/实现总结.md)** | Chinese summary |
 
 ## 🎯 What is FlexAttention Ensemble?
 
@@ -75,13 +75,13 @@ pip install transformers pandas numpy tqdm datasets spacy
 python3 -m spacy download en_core_web_lg
 
 # 2. Validate environment
-python3 validate_flexattention_env.py --test-flex-attention
+python3 tools/validate_flexattention_env.py --test-flex-attention
 
 # 3. Download resources
-bash download_resources.sh --dataset webqa --model llama3.2_3b_it
+bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it
 ```
 
-For detailed setup instructions, see **[QUICKSTART.md](QUICKSTART.md)**.
+For detailed setup instructions, see **[docs/QUICKSTART.md](docs/QUICKSTART.md)**.
 
 ## 📖 Usage
 
@@ -99,7 +99,7 @@ python3 flex_attention_generate.py \
 
 ```bash
 # Debug mode with detailed output
-python3 debug_flexattention.py \
+python3 tools/debug_flexattention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --max-samples 2 \
@@ -110,10 +110,10 @@ python3 debug_flexattention.py \
 
 ```bash
 # Run standalone example (no dataset/model required)
-python3 example_flexattention.py
+python3 tools/example_flexattention.py
 ```
 
-For more examples, see **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**.
+For more examples, see **[docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)**.
 
 ## 🐛 Debugging
 
@@ -123,7 +123,7 @@ This repository includes comprehensive debugging tools:
 
 ```bash
 # Debug with detailed step-by-step output
-python3 debug_flexattention.py --dataset webqa --max-samples 1 --verbose
+python3 tools/debug_flexattention.py --dataset webqa --max-samples 1 --verbose
 ```
 
 **Shows:**
@@ -141,7 +141,7 @@ python3 debug_flexattention.py --dataset webqa --max-samples 1 --verbose
    - "Debug Script - WebQA (2 samples)"
    - "Validate Environment"
 
-See **[DELEGATE_PROMPT.md](DELEGATE_PROMPT.md)** for complete debugging guide.
+See **[docs/DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md)** for complete debugging guide.
 
 ## 🧪 Testing
 
@@ -149,10 +149,10 @@ Run the validation and example scripts:
 
 ```bash
 # Validate environment
-python3 validate_flexattention_env.py --test-flex-attention
+python3 tools/validate_flexattention_env.py --test-flex-attention
 
 # Run minimal example
-python3 example_flexattention.py
+python3 tools/example_flexattention.py
 
 # Test notebooks (requires Jupyter)
 jupyter notebook test/test_generate.ipynb
@@ -167,8 +167,8 @@ Supported datasets:
 
 Download with:
 ```bash
-bash download_resources.sh --dataset webqa
-bash download_resources.sh --dataset myriadlama
+bash tools/download_resources.sh --dataset webqa
+bash tools/download_resources.sh --dataset myriadlama
 ```
 
 ## 🤖 Models
@@ -180,7 +180,7 @@ Supported models (defined in `constants.py`):
 
 Download with:
 ```bash
-bash download_resources.sh --model llama3.2_3b_it
+bash tools/download_resources.sh --model llama3.2_3b_it
 ```
 
 ## 📁 Repository Structure
@@ -192,17 +192,19 @@ bash download_resources.sh --model llama3.2_3b_it
 ├── dataset.py                     # Dataset loading
 ├── constants.py                   # Configuration
 │
-├── validate_flexattention_env.py  # Environment validation
-├── debug_flexattention.py         # Debugging script
-├── example_flexattention.py       # Minimal examples
-├── download_resources.sh          # Resource downloader
+├── tools/                         # Debugging and utilities
+│   ├── validate_flexattention_env.py  # Environment validation
+│   ├── debug_flexattention.py         # Debugging script
+│   ├── example_flexattention.py       # Minimal examples
+│   └── download_resources.sh          # Resource downloader
 │
-├── QUICKSTART.md                  # Quick start guide
-├── DELEGATE_PROMPT.md             # Complete debugging guide
-├── README_FLEXATTENTION.md        # FlexAttention overview
-├── QUICK_REFERENCE.md             # API reference
-├── FLEX_ATTENTION_IMPLEMENTATION.md  # Technical details
-├── ARCHITECTURE.md                # Architecture diagrams
+├── docs/                          # Documentation
+│   ├── QUICKSTART.md              # Quick start guide
+│   ├── DELEGATE_PROMPT.md         # Complete debugging guide
+│   ├── README_FLEXATTENTION.md    # FlexAttention overview
+│   ├── QUICK_REFERENCE.md         # API reference
+│   ├── FLEX_ATTENTION_IMPLEMENTATION.md  # Technical details
+│   └── ARCHITECTURE.md            # Architecture diagrams
 │
 └── test/                          # Test notebooks
     ├── test_generate.ipynb
@@ -233,7 +235,7 @@ Gen1: ✓✓✓ ✓✓✓ ✓✓✓
 Gen2: ✓✓✓ ✓✓✓ ✓✓✓ ✓
 ```
 
-See **[ARCHITECTURE.md](ARCHITECTURE.md)** for detailed diagrams.
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for detailed diagrams.
 
 ## 📈 Performance
 
@@ -259,25 +261,25 @@ python3 flex_attention_generate.py --device cpu
 export HF_ENDPOINT=https://hf-mirror.com
 ```
 
-For more solutions, see **[DELEGATE_PROMPT.md#troubleshooting](DELEGATE_PROMPT.md#troubleshooting)**.
+For more solutions, see **[docs/DELEGATE_PROMPT.md#troubleshooting](docs/DELEGATE_PROMPT.md#troubleshooting)**.
 
 ## 📝 Documentation Index
 
 **Getting Started:**
-- [QUICKSTART.md](QUICKSTART.md) - 5-minute setup
-- [DELEGATE_PROMPT.md](DELEGATE_PROMPT.md) - Complete guide
+- [docs/QUICKSTART.md](docs/QUICKSTART.md) - 5-minute setup
+- [docs/DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md) - Complete guide
 
 **Understanding FlexAttention:**
-- [README_FLEXATTENTION.md](README_FLEXATTENTION.md) - Overview
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Visual diagrams
-- [FLEX_ATTENTION_IMPLEMENTATION.md](FLEX_ATTENTION_IMPLEMENTATION.md) - Technical details
+- [docs/README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md) - Overview
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Visual diagrams
+- [docs/FLEX_ATTENTION_IMPLEMENTATION.md](docs/FLEX_ATTENTION_IMPLEMENTATION.md) - Technical details
 
 **API Reference:**
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Quick reference
-- [REUSE_VS_NEW_DETAILED.md](REUSE_VS_NEW_DETAILED.md) - Code breakdown
+- [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) - Quick reference
+- [docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md) - Code breakdown
 
 **中文文档:**
-- [实现总结.md](实现总结.md) - 中文总结
+- [docs/实现总结.md](docs/实现总结.md) - 中文总结
 
 ## 🤝 Contributing
 

@@ -33,7 +33,7 @@
             "name": "Debug Script - WebQA (2 samples)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/debug_flexattention.py",
+            "program": "${workspaceFolder}/tools/debug_flexattention.py",
             "console": "integratedTerminal",
             "args": [
                 "--dataset", "webqa",
@@ -48,7 +48,7 @@
             "name": "Debug Script - MyriadLAMA (1 sample)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/debug_flexattention.py",
+            "program": "${workspaceFolder}/tools/debug_flexattention.py",
             "console": "integratedTerminal",
             "args": [
                 "--dataset", "myriadlama",
@@ -63,7 +63,7 @@
             "name": "Validate Environment",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/validate_flexattention_env.py",
+            "program": "${workspaceFolder}/tools/validate_flexattention_env.py",
             "console": "integratedTerminal",
             "args": [
                 "--verbose",

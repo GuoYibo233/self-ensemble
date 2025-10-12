@@ -110,7 +110,7 @@ This document verifies that all components for FlexAttention debugging and valid
 
 **Usage:**
 ```bash
-python3 validate_flexattention_env.py --test-flex-attention
+python3 tools/validate_flexattention_env.py --test-flex-attention
 ```
 
 ### 3. Download Necessary Resources ✅
@@ -128,7 +128,7 @@ python3 validate_flexattention_env.py --test-flex-attention
 
 **Usage:**
 ```bash
-bash download_resources.sh --dataset webqa --model llama3.2_3b_it
+bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it
 ```
 
 ### 4. Enable Step-by-Step Debugging ✅
@@ -143,7 +143,7 @@ bash download_resources.sh --dataset webqa --model llama3.2_3b_it
 
 **Usage:**
 ```bash
-python3 debug_flexattention.py --dataset webqa --max-samples 1 --verbose
+python3 tools/debug_flexattention.py --dataset webqa --max-samples 1 --verbose
 ```
 
 #### b) Python Debugger (pdb)
@@ -171,7 +171,7 @@ python3 -m pdb flex_attention_generate.py --dataset webqa --model llama3.2_3b_it
 
 **Usage:**
 ```bash
-python3 example_flexattention.py
+python3 tools/example_flexattention.py
 ```
 
 ### 5. Detailed Inspection Capabilities ✅
@@ -211,15 +211,15 @@ Result: ✅ All pass
 
 ### Environment Validation ✅
 ```bash
-python3 validate_flexattention_env.py
+python3 tools/validate_flexattention_env.py
 ```
 Result: ✅ Correctly detects dependencies and provides guidance
 
 ### Script Help Messages ✅
 ```bash
-bash download_resources.sh --help
-python3 validate_flexattention_env.py --help
-python3 debug_flexattention.py --help
+bash tools/download_resources.sh --help
+python3 tools/validate_flexattention_env.py --help
+python3 tools/debug_flexattention.py --help
 ```
 Result: ✅ All show proper usage information
 
@@ -227,15 +227,15 @@ Result: ✅ All show proper usage information
 
 ### Created Files (9 new files)
 
-1. **DELEGATE_PROMPT.md** (16KB) - Main debugging guide
+1. **docs/DELEGATE_PROMPT.md** (16KB) - Main debugging guide
 2. **README.md** (8.5KB) - Repository documentation
-3. **QUICKSTART.md** (5.1KB) - Quick start guide
-4. **validate_flexattention_env.py** (12KB) - Environment validator
-5. **debug_flexattention.py** (16KB) - Debug script
-6. **example_flexattention.py** (7.6KB) - Minimal examples
-7. **download_resources.sh** (9KB) - Resource downloader
+3. **docs/QUICKSTART.md** (5.1KB) - Quick start guide
+4. **tools/validate_flexattention_env.py** (12KB) - Environment validator
+5. **tools/debug_flexattention.py** (16KB) - Debug script
+6. **tools/example_flexattention.py** (7.6KB) - Minimal examples
+7. **tools/download_resources.sh** (9KB) - Resource downloader
 8. **.vscode/launch.json** (3.4KB) - VSCode debug config
-9. **SETUP_VERIFICATION.md** (this file)
+9. **docs/SETUP_VERIFICATION.md** (this file)
 
 ### Modified Files (1)
 
@@ -255,25 +255,25 @@ To verify everything is set up correctly:
 ### Step 1: Environment Validation
 ```bash
 cd /path/to/self-ensemble
-python3 validate_flexattention_env.py
+python3 tools/validate_flexattention_env.py
 ```
 Expected: Shows what's installed and what's missing
 
 ### Step 2: Run Example
 ```bash
-python3 example_flexattention.py
+python3 tools/example_flexattention.py
 ```
 Expected: Shows 3 attention pattern examples (requires PyTorch + FlexAttention)
 
 ### Step 3: Check Documentation
 ```bash
-ls -lh *.md
+ls -lh docs/*.md
 ```
-Expected: See README.md, DELEGATE_PROMPT.md, QUICKSTART.md, etc.
+Expected: See multiple documentation files in docs/
 
 ### Step 4: Test Download Script
 ```bash
-bash download_resources.sh --help
+bash tools/download_resources.sh --help
 ```
 Expected: Shows usage information
 
@@ -320,10 +320,10 @@ All requirements have been met:
 
 ## 📝 Next Steps for Users
 
-1. **Setup**: Follow QUICKSTART.md (5 minutes)
-2. **Validate**: Run `python3 validate_flexattention_env.py`
-3. **Download**: Run `bash download_resources.sh --dataset webqa --model llama3.2_3b_it`
-4. **Debug**: Run `python3 debug_flexattention.py --max-samples 1 --verbose`
+1. **Setup**: Follow docs/QUICKSTART.md (5 minutes)
+2. **Validate**: Run `python3 tools/validate_flexattention_env.py`
+3. **Download**: Run `bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it`
+4. **Debug**: Run `python3 tools/debug_flexattention.py --max-samples 1 --verbose`
 5. **Generate**: Run `python3 flex_attention_generate.py --dataset webqa --model llama3.2_3b_it`
 
 ## 🎯 Success Criteria

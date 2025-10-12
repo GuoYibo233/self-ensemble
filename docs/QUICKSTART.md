@@ -29,7 +29,7 @@ python3 -m spacy download en_core_web_lg
 ## Step 2: Validate Environment (30 seconds)
 
 ```bash
-python3 validate_flexattention_env.py --test-flex-attention
+python3 tools/validate_flexattention_env.py --test-flex-attention
 ```
 
 You should see:
@@ -45,7 +45,7 @@ You should see:
 
 ```bash
 # Download WebQA dataset and model
-bash download_resources.sh --dataset webqa --model llama3.2_3b_it
+bash tools/download_resources.sh --dataset webqa --model llama3.2_3b_it
 ```
 
 This will:
@@ -57,7 +57,7 @@ This will:
 
 ```bash
 # Run on 1 sample to see how the code works
-python3 debug_flexattention.py \
+python3 tools/debug_flexattention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --max-samples 1 \
@@ -88,31 +88,31 @@ Results will be saved to `datasets/webqa/flex_attention-5.feather`
 ### Debugging
 ```bash
 # Debug 1 sample with verbose output
-python3 debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 1 --verbose
+python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --max-samples 1 --verbose
 
 # Debug with specific paraphrases
-python3 debug_flexattention.py --dataset webqa --model llama3.2_3b_it --indexs 0,1,2 --max-samples 1
+python3 tools/debug_flexattention.py --dataset webqa --model llama3.2_3b_it --indexs 0,1,2 --max-samples 1
 ```
 
 ### Validation
 ```bash
 # Quick validation
-python3 validate_flexattention_env.py
+python3 tools/validate_flexattention_env.py
 
 # Full validation with FlexAttention test
-python3 validate_flexattention_env.py --test-flex-attention --verbose
+python3 tools/validate_flexattention_env.py --test-flex-attention --verbose
 ```
 
 ### Resource Management
 ```bash
 # List available resources
-bash download_resources.sh --list
+bash tools/download_resources.sh --list
 
 # Download only dataset (no model)
-bash download_resources.sh --dataset-only webqa
+bash tools/download_resources.sh --dataset-only webqa
 
 # Download only spaCy model
-bash download_resources.sh --spacy
+bash tools/download_resources.sh --spacy
 ```
 
 ### Generation
