@@ -256,7 +256,11 @@ class FlexAttentionWrapper:
                 )
             except Exception as e:
                 # Fallback to standard SDPA
-                print(f"⚠️  FlexAttention failed in layer {layer_idx}: {e}")
+                import traceback
+                print(f"⚠️  FlexAttention failed in layer {layer_idx}: {type(e).__name__}: {e}")
+                if step == 0:  # Only print full traceback on first error
+                    print(f"    Full error traceback (first occurrence):")
+                    traceback.print_exc()
                 attn_output = torch.nn.functional.scaled_dot_product_attention(
                     query_states, key_states, value_states,
                     is_causal=True
@@ -361,8 +365,12 @@ def flex_attention_generation(prompts, max_new_tokens=20):
             # Reused pattern: Forward pass (from generate.py)
             logits = model(inputs["input_ids"]).logits[:, -1, :]
         except Exception as e:
-            print(f"⚠️  Generation step {step} failed: {e}")
-            # Fallback to unpatchedmodel
+            import traceback
+            print(f"⚠️  Generation step {step} failed: {type(e).__name__}: {e}")
+            print(f"    Full error traceback:")
+            traceback.print_exc()
+            print(f"    Falling back to unpatched model...")
+            # Fallback to unpatched model
             flex_wrapper.unpatch_model()
             logits = model(inputs["input_ids"]).logits[:, -1, :]
         finally:

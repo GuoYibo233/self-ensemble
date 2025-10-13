@@ -308,4 +308,130 @@ separator="\n\n[SEP]\n\n"
 
 ---
 
+## Commit d09c197 - Add comprehensive CHANGELOG.md for tracking all changes
+**提交时间 / Date**: 2025-10-13
+
+### 文件变更 / Files Changed
+- ✅ `CHANGELOG.md` - 新文件
+
+### 具体改动 / Specific Changes
+
+#### CHANGELOG.md (新文件)
+**功能**: 详细的变更追踪文档（311行文档）
+
+**包含内容**:
+- 每个commit的详细变更记录
+- 文件级别的修改说明
+- 具体代码修改和示例
+- 影响范围分析
+- 统计信息汇总
+
+### 影响范围 / Impact
+- 🟢 **文档改进** - 提供完整的变更历史追踪
+
+---
+
+## 待提交 - Improve error handling and diagnostics for FlexAttention
+**提交时间 / Date**: 2025-10-13 (Pending)
+
+### 文件变更 / Files Changed
+- ✅ `flex_attention_generate.py` - 改进错误处理
+- ✅ `CHANGELOG.md` - 更新变更记录和故障排除
+
+### 具体改动 / Specific Changes
+
+#### flex_attention_generate.py
+**改进**: 增强错误诊断信息
+
+**问题**: 当FlexAttention失败时，只显示简单错误消息，难以诊断问题
+
+**修复**:
+1. 添加完整的traceback输出
+2. 显示异常类型和详细信息
+3. 在第一次错误时显示完整堆栈跟踪
+4. 改进fallback提示信息
+
+**代码变更**:
+```python
+# 之前
+except Exception as e:
+    print(f"⚠️  Generation step {step} failed: {e}")
+
+# 现在
+except Exception as e:
+    import traceback
+    print(f"⚠️  Generation step {step} failed: {type(e).__name__}: {e}")
+    print(f"    Full error traceback:")
+    traceback.print_exc()
+    print(f"    Falling back to unpatched model...")
+```
+
+### 故障排除指南 / Troubleshooting Guide
+
+#### 问题: "Generation step [xx] failed: FlexAttentionWrapper.create_patched_forward"
+
+**常见原因**:
+
+1. **PyTorch版本不支持FlexAttention**
+   - FlexAttention需要PyTorch 2.5+或nightly版本
+   - 检查: `python -c "import torch; print(torch.__version__)"`
+   - 解决: 
+     ```bash
+     pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
+     ```
+
+2. **模型架构不兼容**
+   - 某些模型的attention层结构可能与patching不兼容
+   - 检查模型是否有`q_proj`, `k_proj`, `v_proj`, `o_proj`
+   - 解决: 使用传统ensemble方法
+     ```bash
+     python generate.py --dataset webqa --method avg --num_ensemble 5
+     ```
+
+3. **CUDA/设备问题**
+   - FlexAttention可能对某些CUDA版本有要求
+   - 检查: `python -c "import torch; print(torch.cuda.is_available())"`
+   - 解决: 尝试CPU模式或更新CUDA驱动
+
+4. **序列长度问题**
+   - 非常长的序列可能导致内存不足
+   - 解决: 减少paraphrase数量或使用`--max_samples`限制
+
+**调试步骤**:
+
+1. **获取详细错误信息**
+   ```bash
+   python flex_attention_generate.py --dataset webqa --model llama3.2_3b_it \
+       --num_paraphrases 5 --max_samples 10 2>&1 | tee debug.log
+   ```
+
+2. **验证FlexAttention可用性**
+   ```bash
+   python -c "from torch.nn.attention.flex_attention import flex_attention; print('Available')"
+   ```
+
+3. **测试简单情况**
+   ```bash
+   # 只生成1个样本进行测试
+   python flex_attention_generate.py --dataset webqa --model llama3.2_3b_it \
+       --num_paraphrases 3 --max_samples 1
+   ```
+
+4. **使用fallback机制**
+   - 代码会自动fallback到标准attention
+   - 如果fallback正常工作，说明问题在FlexAttention本身
+
+**临时解决方案**:
+如果FlexAttention持续失败，使用传统ensemble方法：
+```bash
+python generate.py --dataset webqa --model llama3.2_3b_it --method avg --num_ensemble 5
+```
+
+### 影响范围 / Impact
+- 🟢 **改进** - 更好的错误诊断
+- 🟢 **调试** - 完整的traceback帮助定位问题
+- 🟢 **用户体验** - 清晰的错误信息和解决方案
+
+---
+
 *此文档会在每次提交后更新 / This document is updated with each commit*
