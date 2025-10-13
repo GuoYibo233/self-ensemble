@@ -439,7 +439,16 @@ def debug_flex_attention_generation(prompts, tokenizer, model, max_new_tokens=5)
     # Show full sequence with segment boundaries marked for clarity
     full_tokens = inputs["input_ids"][0].tolist()
     for i, (start, end) in enumerate(segment_positions):
-        segment_tokens = full_tokens[start:end]
+        # Include separator tokens after each segment (except the last one)
+        if i < len(segment_positions) - 1:
+            # Include tokens from current segment up to the start of next segment
+            # This includes the separator tokens between segments
+            next_start = segment_positions[i+1][0]
+            segment_tokens = full_tokens[start:next_start]
+        else:
+            # For the last segment, only include its own tokens
+            segment_tokens = full_tokens[start:end]
+        
         segment_text = tokenizer.decode(segment_tokens, skip_special_tokens=True)
         print(f"\n[Prompt {i+1}] (positions {start}-{end-1}):")
         print(f"{segment_text}")
