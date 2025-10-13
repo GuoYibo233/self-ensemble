@@ -337,6 +337,11 @@ For more solutions, see **[docs/DELEGATE_PROMPT.md#troubleshooting](docs/DELEGAT
 - [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) - Quick reference
 - [docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md) - Code breakdown
 
+**Debugging & Development:**
+- [CHANGELOG.md](CHANGELOG.md) - Change history and updates
+- [CHANGELOG_FLEXATTENTION_DEBUG.md](CHANGELOG_FLEXATTENTION_DEBUG.md) - Detailed debug log
+- [FLEXATTENTION_FIX_SUMMARY.md](FLEXATTENTION_FIX_SUMMARY.md) - Recent fix summary
+
 **中文文档:**
 - [docs/实现总结.md](docs/实现总结.md) - 中文总结
 

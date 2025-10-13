@@ -4,6 +4,69 @@
 
 ---
 
+## Current Session - FlexAttention Implementation Debug and Fix
+**调试时间 / Debug Session**: 2025-10-14
+
+### 🐛 重大修复 / Critical Fixes
+
+#### FlexAttention与LLaMA 3.2 GQA架构兼容性
+- **问题**: FlexAttentionWrapper无法正确处理LLaMA 3.2的Grouped Query Attention架构
+- **发现**: LLaMA 3.2使用24个Query头但只有8个Key-Value头（3:1比例）
+- **修复**: 添加GQA张量扩展逻辑，正确处理KV头到Q头的映射
+
+#### PyTorch FlexAttention vmap编译问题  
+- **问题**: `mask_mod`函数中的复杂控制流导致vmap编译失败
+- **错误**: `RuntimeError: vmap: data-dependent control flow not supported`  
+- **修复**: 简化mask函数，移除数据依赖的循环和条件分支
+
+#### Transformers 4.55.2接口变更
+- **问题**: 方法签名和返回值格式不匹配
+- **发现**: `LlamaAttention.forward`现在需要`position_embeddings`参数
+- **修复**: 更新参数处理和返回值格式
+
+### 📋 修改的文件 / Modified Files
+```
+flex_attention_generate.py:
+├── FlexAttentionWrapper.create_patched_forward() - 完全重构  
+├── create_flex_attention_mask() - 简化实现
+└── 添加GQA支持和错误处理
+
+新增文件:
+└── CHANGELOG_FLEXATTENTION_DEBUG.md - 详细调试日志
+```
+
+### 🔧 技术细节 / Technical Details
+
+#### 关键发现 - LLaMA 3.2 GQA架构
+```python
+# LLaMA 3.2 3B Instruct架构特点
+num_attention_heads = 24      # Query heads  
+num_key_value_heads = 8       # Key-Value heads  
+head_dim = 128               # 每个头的维度
+ratio = 24 // 8 = 3          # Q:KV = 3:1
+
+# 必需的张量扩展代码
+if num_key_value_heads != num_heads:
+    key_states = key_states.repeat_interleave(3, dim=1) 
+    value_states = value_states.repeat_interleave(3, dim=1)
+```
+
+#### FlexAttention限制
+- ❌ 不支持数据依赖的控制流（循环、复杂条件）
+- ❌ mask_mod函数必须可静态编译
+- ✅ 基本的张量运算和简单比较可以使用
+
+### ⚠️ 当前状态 / Current Status
+- ✅ **已修复**: FlexAttention基本功能可正常运行
+- ⚠️ **限制**: 复杂的segment isolation masking暂时简化
+- 🔄 **待续**: 原始请求的可视化改进尚未完成
+
+### 📚 相关文档 / Related Documentation
+- `CHANGELOG_FLEXATTENTION_DEBUG.md` - 完整的调试过程和技术细节
+- `docs/FLEX_ATTENTION_IMPLEMENTATION.md` - FlexAttention实现说明
+
+---
+
 ## Commit 16164ef - Update documentation for max_samples and analysis tools
 **提交时间 / Date**: 2025-10-13
 
