@@ -1,21 +1,24 @@
 # FlexAttention Debug & Fix Documentation Index
 
-## 📖 本次调试会话产生的文档
+## 📖 文档导航 / Documentation Navigation
 
-### 🏷️ 主要文档
-1. **[CHANGELOG_FLEXATTENTION_DEBUG.md](CHANGELOG_FLEXATTENTION_DEBUG.md)**
-   - 完整的技术调试日志
-   - 详细的错误分析和修复过程
-   - 包含代码示例和技术发现
+### 🏷️ 主要文档 / Main Documentation
+1. **[CHANGELOG.md](CHANGELOG.md)** - 统一的变更历史文档 ✅ 权威来源
+   - 完整的FlexAttention调试日志和修复过程
+   - 详细的错误分析和解决方案
+   - 所有提交的变更记录
+   - 代码示例和技术发现
+   - 包含原 CHANGELOG_FLEXATTENTION_DEBUG.md 和 FLEXATTENTION_FIX_SUMMARY.md 的所有内容
 
-2. **[FLEXATTENTION_FIX_SUMMARY.md](FLEXATTENTION_FIX_SUMMARY.md)**  
-   - 简洁的修复总结
-   - 关键问题和解决方案概述
-   - 修改统计和学习经验
+2. **[README.md](README.md)** - 项目主文档
+   - 功能概述和快速开始
+   - 链接到详细文档
+   - 使用示例
 
-3. **[CHANGELOG.md](CHANGELOG.md)** (更新)
-   - 添加了FlexAttention修复记录
-   - 集成到项目整体变更历史中
+3. **[FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md)** - FlexAttention使用指南
+   - 详细的使用说明
+   - 参数配置
+   - 故障排除
 
 ### 🔧 修改的源代码
 - **`flex_attention_generate.py`** - 主要修复文件
@@ -23,10 +26,10 @@
   - `create_patched_forward()` 方法重写
   - `create_flex_attention_mask()` 简化
 
-### 📚 相关技术文档
-- [docs/FLEX_ATTENTION_IMPLEMENTATION.md](docs/FLEX_ATTENTION_IMPLEMENTATION.md) - 原始FlexAttention实现文档
-- [docs/README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md) - FlexAttention概述
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 系统架构图
+### 📚 技术文档 / Technical Documentation
+- **[IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md)** - Mask Matrix和Prompt改进的详细技术文档
+- **[BEFORE_AFTER_COMPARISON.md](BEFORE_AFTER_COMPARISON.md)** - 改进前后的可视化对比
+- **[CHANGES_README.md](CHANGES_README.md)** - 快速入门和变更概览
 
 ## 🎯 核心发现
 
@@ -58,15 +61,15 @@ Ratio: 3:1 (需要tensor扩展)
 | 复杂masking | ⚠️ 简化 | 因vmap限制暂时简化 |
 | 可视化改进 | 🔄 待续 | 原始用户请求尚未处理 |
 
-## 📋 使用指南
+## 📋 使用指南 / Usage Guide
 
-### 查看详细技术信息
+### 查看完整变更历史和技术细节
 ```bash
-# 完整调试过程
-cat CHANGELOG_FLEXATTENTION_DEBUG.md
+# 所有变更历史（包含FlexAttention调试的完整记录）
+cat CHANGELOG.md
 
-# 快速了解修改
-cat FLEXATTENTION_FIX_SUMMARY.md
+# 查看特定部分
+cat CHANGELOG.md | grep -A 30 "FlexAttention"
 ```
 
 ### 测试修复效果
