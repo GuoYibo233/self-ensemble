@@ -118,6 +118,16 @@ python flex_attention_generate.py \
     --device auto
 ```
 
+### Limit Number of Samples (NEW)
+```bash
+# Generate only 100 samples for quick testing
+python flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_paraphrases 5 \
+    --max_samples 100
+```
+
 ### With Specific Indices
 ```bash
 python flex_attention_generate.py \
@@ -134,6 +144,26 @@ python flex_attention_generate.py \
     --num_paraphrases 5 \
     --lemmaize
 ```
+
+### Analysis (NEW)
+```bash
+# Command-line analysis
+python analysis/analyze_flexattention.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_paraphrases 5
+
+# Compare different numbers of paraphrases
+python analysis/analyze_flexattention.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --compare_all
+
+# Interactive analysis with Jupyter
+jupyter notebook analysis/flexattention_analysis.ipynb
+```
+
+See **[FLEXATTENTION_USAGE.md](../FLEXATTENTION_USAGE.md)** for detailed usage guide.
 
 ## Requirements
 

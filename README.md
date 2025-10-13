@@ -26,6 +26,11 @@ This repository implements self-ensemble methods for natural language generation
 - **`tools/example_flexattention.py`** - Minimal working examples
 - **`tools/download_resources.sh`** - Download datasets and models
 
+### Analysis Tools
+
+- **`analysis/analyze_flexattention.py`** - Command-line analysis tool for FlexAttention results
+- **`analysis/flexattention_analysis.ipynb`** - Interactive Jupyter notebook for analysis and visualization
+
 ### Documentation
 
 | Document | Description |
@@ -38,6 +43,8 @@ This repository implements self-ensemble methods for natural language generation
 | **[docs/FLEX_ATTENTION_IMPLEMENTATION.md](docs/FLEX_ATTENTION_IMPLEMENTATION.md)** | Technical details |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Visual diagrams |
 | **[docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md)** | Component breakdown |
+| **[FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md)** | Usage guide with --max_samples and analysis tools |
+| **[IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md)** | Recent mask matrix & prompt formatting improvements |
 | **[docs/实现总结.md](docs/实现总结.md)** | Chinese summary |
 
 ## 🎯 What is FlexAttention Ensemble?
@@ -112,7 +119,28 @@ python3 flex_attention_generate.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --num_paraphrases 5
+
+# Limit to 100 samples for quick testing
+python3 flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_paraphrases 5 \
+    --max_samples 100
 ```
+
+### Analysis
+
+```bash
+# Analyze FlexAttention results
+python3 analysis/analyze_flexattention.py \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# Interactive analysis with Jupyter
+jupyter notebook analysis/flexattention_analysis.ipynb
+```
+
+For detailed usage and analysis guide, see **[FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md)**.
 
 ### Debugging
 
@@ -220,6 +248,11 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 │   ├── example_flexattention.py       # Minimal examples
 │   └── download_resources.sh          # Resource downloader
 │
+├── analysis/                      # Analysis tools
+│   ├── analyze_flexattention.py   # Command-line analysis
+│   ├── flexattention_analysis.ipynb   # Interactive analysis notebook
+│   └── [other analysis notebooks]
+│
 ├── docs/                          # Documentation
 │   ├── QUICKSTART.md              # Quick start guide
 │   ├── LINUX_SETUP.md             # Linux-specific setup guide
@@ -228,6 +261,9 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 │   ├── QUICK_REFERENCE.md         # API reference
 │   ├── FLEX_ATTENTION_IMPLEMENTATION.md  # Technical details
 │   └── ARCHITECTURE.md            # Architecture diagrams
+│
+├── FLEXATTENTION_USAGE.md         # Usage guide for new features
+├── IMPROVEMENTS_SUMMARY.md        # Recent improvements summary
 │
 └── test/                          # Test notebooks
     ├── test_generate.ipynb
@@ -331,4 +367,4 @@ Contributions are welcome! Areas for improvement:
 
 **Status:** ✅ Production Ready | 🧪 Tested | 📖 Documented
 
-Last updated: 2025-10-11
+Last updated: 2025-10-13
