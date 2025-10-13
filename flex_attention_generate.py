@@ -426,6 +426,10 @@ if __name__ == "__main__":
         "--num_paraphrases", type=int, default=5,
         help="Number of paraphrases to concatenate (default: 5)"
     )
+    parser.add_argument(
+        "--max_samples", type=int, default=None,
+        help="Maximum number of samples to generate (default: None, process all)"
+    )
     args = parser.parse_args()
     
     # Check FlexAttention availability
@@ -505,11 +509,14 @@ if __name__ == "__main__":
     # Reused pattern: DataFrame initialization (from generate.py)
     df = pd.DataFrame(columns=["uuid", "answers", "prediction", "generation"])
     print(f"FlexAttention generation with {args.num_paraphrases} paraphrases")
+    if args.max_samples:
+        print(f"Processing maximum {args.max_samples} samples")
     
     # Reused pattern: Few-shot context (from generate.py)
     few_shot_context = dataset.get_few_shot_examples()
     
     # Main generation loop
+    sample_count = 0
     for uuids, answers, all_paraphrases in tqdm(dataloader):
         # Reused pattern: Paraphrase selection (from generate.py)
         if args.indexs is not None:
@@ -548,6 +555,12 @@ if __name__ == "__main__":
             "generation": batch_generations,
         }
         df = pd.concat([df, pd.DataFrame(items)], ignore_index=True)
+        
+        # Check if we've reached max_samples
+        sample_count += len(uuids)
+        if args.max_samples and sample_count >= args.max_samples:
+            print(f"Reached max_samples limit ({args.max_samples}), stopping generation")
+            break
     
     # Reused pattern: Save results (from generate.py)
     df.to_feather(dump_file)
