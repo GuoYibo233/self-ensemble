@@ -1,4 +1,4 @@
-name: self-ensemble-debug
+name: flexattention
 channels:
   - pytorch
   - nvidia
@@ -24,10 +24,11 @@ dependencies:
     - feather-format
     - pyarrow
 
+
 # Environment for Linux systems with CUDA 12.1
 # Optimized for NVIDIA RTX A6000 GPUs
 # IMPORTANT: FlexAttention requires Python 3.10+ with PyTorch 2.5+
 # After creating the environment, run:
-# conda activate self-ensemble-debug
+# conda activate flexattention
 # python -m spacy download en_core_web_lg
 

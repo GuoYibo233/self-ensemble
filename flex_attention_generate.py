@@ -21,6 +21,12 @@ from tqdm import tqdm
 import multiprocessing as mp
 import warnings
 
+# Configure Hugging Face cache directories to use net folder
+os.environ['HF_HOME'] = '/net/tokyo100-10g/data/str01_01/y-guo/hf_cache'
+os.environ['TRANSFORMERS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Models go to net/models
+os.environ['HF_DATASETS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/datasets'
+os.environ['HF_HUB_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Hub cache also goes to models
+
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 

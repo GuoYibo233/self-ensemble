@@ -177,7 +177,47 @@ python3 tools/example_flexattention.py
 jupyter notebook test/test_generate.ipynb
 ```
 
-## 📊 Datasets
+## � Download Locations
+
+### Model Storage
+Models will be downloaded to:
+```
+/net/tokyo100-10g/data/str01_01/y-guo/models/
+├── models--Qwen--Qwen2.5-3B-Instruct/
+├── models--meta-llama--Llama-3.2-3B-Instruct/
+└── ...
+```
+
+### Dataset Storage
+Datasets will be cached to:
+```
+/net/tokyo100-10g/data/str01_01/y-guo/datasets/
+├── stanfordnlp___web_questions/
+├── iszhaoxin___myriad_l_a_m_a/
+└── ...
+```
+
+### Project Output
+Generated results will be saved to:
+```
+/net/tokyo100-10g/data/str01_01/y-guo/datasets/
+├── webqa/
+│   └── llama3.2_3b_it/
+│       ├── paraphrases.feather
+│       ├── per_prompt.feather
+│       └── flex_attention_ensemble-5.feather
+└── myriadlama/
+    └── llama3.2_3b_it/
+        └── ... (similar structure)
+```
+
+### Space Requirements
+- **Models**: ~6GB per model
+- **Datasets**: ~100-500MB per dataset
+- **Project outputs**: ~10-50MB per experiment
+- **Total**: ~7GB for basic setup
+
+## �📊 Datasets
 
 Supported datasets:
 

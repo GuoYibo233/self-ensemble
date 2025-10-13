@@ -73,6 +73,12 @@ download_dataset() {
 import sys
 import os
 
+# Configure Hugging Face cache directories to use net folder
+os.environ['HF_HOME'] = '/net/tokyo100-10g/data/str01_01/y-guo/hf_cache'
+os.environ['TRANSFORMERS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Models go to net/models
+os.environ['HF_DATASETS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/datasets'
+os.environ['HF_HUB_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Hub cache also goes to models
+
 # Add repository to path
 sys.path.insert(0, '${PWD}')
 
@@ -123,6 +129,12 @@ download_model() {
 import sys
 import os
 
+# Configure Hugging Face cache directories to use net folder
+os.environ['HF_HOME'] = '/net/tokyo100-10g/data/str01_01/y-guo/hf_cache'
+os.environ['TRANSFORMERS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Models go to net/models
+os.environ['HF_DATASETS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/datasets'
+os.environ['HF_HUB_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Hub cache also goes to models
+
 # Add repository to path
 sys.path.insert(0, '${PWD}')
 
@@ -140,7 +152,7 @@ try:
     
     # Check cache first
     import os
-    cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+    cache_dir = "/net/tokyo100-10g/data/str01_01/y-guo/models"
     print(f"Checking cache: {cache_dir}")
     
     print("\nDownloading tokenizer...")
@@ -148,7 +160,7 @@ try:
     print("✓ Tokenizer downloaded")
     
     print("\nDownloading model (this may take a while)...")
-    print("  Note: Model will be downloaded to ~/.cache/huggingface/")
+    print("  Note: Model will be downloaded to /net/tokyo100-10g/data/str01_01/y-guo/models")
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         device_map="cpu",  # Use CPU to avoid GPU memory during download

@@ -6,6 +6,12 @@ import pandas as pd
 from tqdm import tqdm
 from abc import abstractmethod
 
+# Configure Hugging Face cache directories to use net folder
+os.environ['HF_HOME'] = '/net/tokyo100-10g/data/str01_01/y-guo/hf_cache'
+os.environ['TRANSFORMERS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Models go to net/models
+os.environ['HF_DATASETS_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/datasets'
+os.environ['HF_HUB_CACHE'] = '/net/tokyo100-10g/data/str01_01/y-guo/models'  # Hub cache also goes to models
+
 from constants import MODEL_PATHs
 
 from torch.utils.data import DataLoader
@@ -14,7 +20,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils import set_seed
 
-DATATASET_ROOT = "/home/xzhao/workspace/self-ensemble/datasets"
+DATATASET_ROOT = "/net/tokyo100-10g/data/str01_01/y-guo/datasets"
 
 
 def string_to_id(s):
