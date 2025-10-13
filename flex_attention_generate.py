@@ -80,14 +80,14 @@ def append_lemmas(df, results):
 # NEW - Paraphrase concatenation with position tracking
 # ==============================================================================
 
-def concatenate_paraphrases_with_positions(prompts, tokenizer, separator=" [SEP] "):
+def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n[SEP]\n\n"):
     """
     Concatenate multiple prompts and track token positions for each segment.
     
     Args:
         prompts: List of prompt strings (paraphrases)
         tokenizer: HuggingFace tokenizer
-        separator: Separator token between prompts
+        separator: Separator token between prompts (default: newlines around [SEP])
         
     Returns:
         concatenated_text: Single concatenated string
@@ -329,7 +329,7 @@ def flex_attention_generation(prompts, max_new_tokens=20):
     
     # NEW: Concatenate paraphrases with position tracking
     concatenated_text, segment_positions, original_length = \
-        concatenate_paraphrases_with_positions(prompts, tokenizer, separator=" [SEP] ")
+        concatenate_paraphrases_with_positions(prompts, tokenizer)
     
     print(f"  Concatenated {len(prompts)} prompts into {original_length} tokens")
     print(f"  Segment positions: {segment_positions}")

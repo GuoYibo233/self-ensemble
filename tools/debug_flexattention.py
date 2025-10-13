@@ -70,38 +70,115 @@ def visualize_attention_mask(mask_func, seq_len, segment_positions, original_len
     """Visualize the attention mask as a matrix."""
     print_subsection("Attention Mask Visualization")
     
-    # Create a 2D matrix representation
-    matrix = np.zeros((seq_len, seq_len), dtype=int)
+    # Determine display strategy based on sequence length
+    max_display = 25  # Increased from 20 to show more structure
     
-    for q in range(seq_len):
-        for kv in range(seq_len):
-            # mask_func expects (batch, head, q_idx, kv_idx)
+    # For large sequences, use smart sampling to show overall structure
+    if seq_len > max_display:
+        # Sample positions intelligently:
+        # 1. Include segment boundaries to show structure
+        # 2. Sample within each segment
+        # 3. Include generated token positions
+        positions = set()
+        
+        # Add segment boundaries and a few positions within each segment
+        for start, end in segment_positions:
+            positions.add(start)  # Start of segment
+            positions.add(end - 1)  # End of segment
+            # Add a few positions within segment
+            segment_len = end - start
+            if segment_len > 4:
+                positions.add(start + segment_len // 3)
+                positions.add(start + 2 * segment_len // 3)
+        
+        # Add original_length boundary
+        if original_length < seq_len:
+            positions.add(original_length)
+            positions.add(original_length - 1)
+        
+        # Add some generated token positions
+        if seq_len > original_length:
+            gen_count = min(5, seq_len - original_length)
+            for i in range(gen_count):
+                positions.add(original_length + i)
+        
+        # Add last position
+        positions.add(seq_len - 1)
+        
+        # Fill remaining slots with evenly spaced positions
+        positions_list = sorted(list(positions))
+        while len(positions_list) < max_display and len(positions_list) < seq_len:
+            # Find largest gap
+            max_gap = 0
+            max_gap_idx = 0
+            for i in range(len(positions_list) - 1):
+                gap = positions_list[i+1] - positions_list[i]
+                if gap > max_gap:
+                    max_gap = gap
+                    max_gap_idx = i
+            
+            if max_gap <= 1:
+                break
+            
+            # Insert midpoint of largest gap
+            mid = (positions_list[max_gap_idx] + positions_list[max_gap_idx + 1]) // 2
+            positions_list.insert(max_gap_idx + 1, mid)
+        
+        positions = sorted(positions_list[:max_display])
+        print(f"\nMask Matrix ({seq_len}x{seq_len}):")
+        print(f"  Showing {len(positions)} strategic positions (including segment boundaries)")
+    else:
+        positions = list(range(seq_len))
+        print(f"\nMask Matrix ({seq_len}x{seq_len}):")
+    
+    # Create matrix for display positions
+    matrix = np.zeros((len(positions), len(positions)), dtype=int)
+    for i, q in enumerate(positions):
+        for j, kv in enumerate(positions):
             can_attend = mask_func(0, 0, q, kv)
-            matrix[q, kv] = 1 if can_attend else 0
+            matrix[i, j] = 1 if can_attend else 0
     
-    # Print the matrix
-    print(f"\nMask Matrix ({seq_len}x{seq_len}):")
-    print("  Q\\KV", end="")
-    for kv in range(min(seq_len, 20)):  # Limit width
-        print(f" {kv:2d}", end="")
+    # Print header with position numbers
+    print("  ", end="")
+    print("Q\\KV ", end="")
+    for kv in positions:
+        print(f"{kv:3d}", end="")
     print()
     
-    for q in range(min(seq_len, 20)):  # Limit height
-        print(f"  {q:4d} ", end="")
-        for kv in range(min(seq_len, 20)):
-            symbol = "✓" if matrix[q, kv] else "✗"
+    # Print matrix rows
+    for i, q in enumerate(positions):
+        # Mark segment boundaries with special indicators
+        marker = " "
+        for seg_idx, (start, end) in enumerate(segment_positions):
+            if q == start:
+                marker = f"S{seg_idx+1}"
+                break
+            elif q == end - 1:
+                marker = f"E{seg_idx+1}"
+                break
+        if q == original_length:
+            marker = "G0"  # Generation start
+        
+        print(f" {marker:>2} {q:3d} ", end="")
+        for j, kv in enumerate(positions):
+            symbol = "■" if matrix[i, j] else "·"  # Use filled square for attend, dot for no-attend
             print(f" {symbol} ", end="")
         print()
     
-    if seq_len > 20:
-        print("  ... (truncated, showing first 20x20)")
+    # Print legend
+    print("\n  Legend:")
+    print("    ■ = can attend, · = cannot attend")
+    print("    S# = segment start, E# = segment end, G0 = generation start")
     
     # Print segment boundaries
-    print(f"\nSegment Boundaries:")
+    print(f"\n  Segment Boundaries:")
     for i, (start, end) in enumerate(segment_positions):
-        print(f"  Segment {i+1}: positions {start}-{end-1}")
+        print(f"    Segment {i+1}: positions {start:3d}-{end-1:3d} (length {end-start})")
     print(f"  Original length: {original_length}")
     print(f"  Generated tokens: {seq_len - original_length}")
+    
+    if seq_len > max_display:
+        print(f"\n  (Matrix shows sampled positions emphasizing structure)")
 
 
 def verify_segment_isolation(mask_func, segment_positions, original_length):
@@ -139,7 +216,7 @@ def verify_segment_isolation(mask_func, segment_positions, original_length):
     return not issues_found
 
 
-def debug_concatenation(prompts, tokenizer, separator=" [SEP] "):
+def debug_concatenation(prompts, tokenizer, separator="\n\n[SEP]\n\n"):
     """Debug the concatenation step."""
     print_section("Step 1: Paraphrase Concatenation")
     
@@ -155,6 +232,7 @@ def debug_concatenation(prompts, tokenizer, separator=" [SEP] "):
     sep_tokens = tokenizer.encode(separator, add_special_tokens=False)
     print(f"\nSeparator: '{separator}'")
     print(f"  Separator tokens: {sep_tokens}")
+    print(f"  Separator decoded: '{tokenizer.decode(sep_tokens)}'")
     
     for prompt in prompts:
         tokens = tokenizer.encode(prompt, add_special_tokens=False)
@@ -176,14 +254,29 @@ def debug_concatenation(prompts, tokenizer, separator=" [SEP] "):
         end_pos = current_pos
         
         segment_positions.append((start_pos, end_pos))
-        print(f"\n  Segment {i+1}: positions [{start_pos}, {end_pos})")
+        print(f"\n  Segment {i+1}: positions [{start_pos:3d}, {end_pos:3d}) - {end_pos-start_pos} tokens")
     
     concatenated_text = tokenizer.decode(full_tokens, skip_special_tokens=False)
     
     print(f"\nResult:")
     print(f"  Total tokens: {len(full_tokens)}")
     print(f"  Segment positions: {segment_positions}")
-    print(f"  Concatenated text (first 200 chars): {concatenated_text[:200]}...")
+    print(f"\n  Concatenated text preview (with segment markers):")
+    
+    # Show preview with segment boundaries marked
+    current_preview_pos = 0
+    for i, (start, end) in enumerate(segment_positions):
+        segment_tokens = full_tokens[start:end]
+        segment_text = tokenizer.decode(segment_tokens, skip_special_tokens=False)
+        preview_len = min(80, len(segment_text))
+        print(f"    [Prompt {i+1}] {segment_text[:preview_len]}{'...' if len(segment_text) > preview_len else ''}")
+        if i < len(segment_positions) - 1:
+            # Show separator
+            sep_start = end
+            sep_end = segment_positions[i+1][0]
+            if sep_end > sep_start:
+                sep_text = tokenizer.decode(full_tokens[sep_start:sep_end], skip_special_tokens=False)
+                print(f"    {sep_text}")
     
     return concatenated_text, segment_positions, len(full_tokens)
 
@@ -338,7 +431,27 @@ def debug_flex_attention_generation(prompts, tokenizer, model, max_new_tokens=5)
     
     print(f"\nGenerated tokens: {generated.shape[1]}")
     print(f"Generated text: '{generated_text}'")
-    print(f"\nFull sequence: {full_text}")
+    
+    print(f"\n{'='*70}")
+    print("Full Sequence with Segment Markers:")
+    print(f"{'='*70}")
+    
+    # Show full sequence with segment boundaries marked for clarity
+    full_tokens = inputs["input_ids"][0].tolist()
+    for i, (start, end) in enumerate(segment_positions):
+        segment_tokens = full_tokens[start:end]
+        segment_text = tokenizer.decode(segment_tokens, skip_special_tokens=True)
+        print(f"\n[Prompt {i+1}] (positions {start}-{end-1}):")
+        print(f"{segment_text}")
+        print(f"{'-'*70}")
+    
+    # Show generated part
+    if len(full_tokens) > original_length:
+        gen_tokens = full_tokens[original_length:]
+        gen_text = tokenizer.decode(gen_tokens, skip_special_tokens=True)
+        print(f"\n[Generated Output] (positions {original_length}-{len(full_tokens)-1}):")
+        print(f"{gen_text}")
+        print(f"{'-'*70}")
     
     return generated_text
 
