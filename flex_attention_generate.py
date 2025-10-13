@@ -319,9 +319,6 @@ def flex_attention_generation(prompts, max_new_tokens=20):
     concatenated_text, segment_positions, original_length = \
         concatenate_paraphrases_with_positions(prompts, tokenizer)
     
-    print(f"  Concatenated {len(prompts)} prompts into {original_length} tokens")
-    print(f"  Segment positions: {segment_positions}")
-    
     # Reused pattern: Tokenize input (from generate.py)
     inputs = tokenizer(
         concatenated_text,
@@ -403,8 +400,8 @@ if __name__ == "__main__":
         help="Dataset to use"
     )
     parser.add_argument(
-        "--device", type=str, default="cuda",
-        help="Device for model (default: cuda)"
+        "--device", type=str, default="auto",
+        help="Device for model (default: auto)"
     )
     parser.add_argument(
         "--lemmaize", action="store_true",
@@ -421,6 +418,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_samples", type=int, default=None,
         help="Maximum number of samples to generate (default: None, process all)"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=16,
+        help="Batch size for dataloader (default: 16, good for 10 GPUs)"
     )
     args = parser.parse_args()
     
@@ -442,7 +443,8 @@ if __name__ == "__main__":
         raise ValueError("Unsupported dataset")
     
     # Reused pattern: Dataloader setup (from generate.py)
-    dataloader = dataset.get_dataloader(batch_size=8, shuffle=False)
+    # Use user-specified batch_size for better GPU utilization
+    dataloader = dataset.get_dataloader(batch_size=args.batch_size, shuffle=False)
     
     if args.model not in MODEL_PATHs:
         raise ValueError(
@@ -453,8 +455,8 @@ if __name__ == "__main__":
     model_path = MODEL_PATHs.get(args.model, args.model)
     
     # Reused pattern: Output file setup (from generate.py)
-    # Use local output directory to avoid permission issues
-    local_output_dir = f"/home/y-guo/self-ensemble/self-ensemble/datasets/{args.dataset}/{args.model}"
+    # Use /net storage for larger datasets
+    local_output_dir = f"/net/tokyo100-10g/data/str01_01/y-guo/datasets/{args.dataset}/{args.model}"
     os.makedirs(local_output_dir, exist_ok=True)
     
     if args.indexs is not None:
@@ -502,9 +504,22 @@ if __name__ == "__main__":
     if hasattr(model.config, 'num_attention_heads'):
         print(f"   Attention heads: {model.config.num_attention_heads}")
     
+    # Print GPU distribution info
+    if hasattr(model, 'hf_device_map'):
+        gpu_usage = {}
+        for layer_name, device_id in model.hf_device_map.items():
+            if device_id not in gpu_usage:
+                gpu_usage[device_id] = []
+            gpu_usage[device_id].append(layer_name)
+        print(f"\n📊 Model distributed across {len(gpu_usage)} GPUs:")
+        for gpu_id in sorted(gpu_usage.keys()):
+            layer_count = len(gpu_usage[gpu_id])
+            print(f"   GPU {gpu_id}: {layer_count} layers")
+    print(f"   Batch size: {args.batch_size}")
+    
     # Reused pattern: DataFrame initialization (from generate.py)
     df = pd.DataFrame(columns=["uuid", "answers", "prediction", "generation"])
-    print(f"FlexAttention generation with {args.num_paraphrases} paraphrases")
+    print(f"\nFlexAttention generation with {args.num_paraphrases} paraphrases")
     if args.max_samples:
         print(f"Processing maximum {args.max_samples} samples")
     

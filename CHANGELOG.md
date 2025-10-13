@@ -4,8 +4,107 @@
 
 ---
 
-## Latest Update - FlexAttention Bug Fixes Complete ✅
-**更新时间 / Update Time**: 2025-10-14
+## Latest Update - GPU Optimization and Multi-GPU Support 🚀
+**更新时间 / Update Time**: 2025-10-14 (晚间)
+**提交信息 / Commit**: Optimize batch size and add multi-GPU support for better resource utilization
+
+### 🎯 优化GPU使用和批处理 / GPU Optimization
+
+针对10个RTX A6000 GPU（每个47.5GB）的硬件配置，优化了批处理和GPU利用率。
+
+#### 改动清单 / Change List
+
+1. **✅ 添加可配置batch_size参数**
+   - 位置: `flex_attention_generate.py` argparse部分
+   - 新增: `--batch_size` 参数，默认值16
+   - 说明: 用户可根据GPU配置自定义批处理大小
+   ```python
+   parser.add_argument(
+       "--batch_size", type=int, default=16,
+       help="Batch size for dataloader (default: 16, good for 10 GPUs)"
+   )
+   ```
+
+2. **✅ 修复dataloader使用args.batch_size**
+   - 位置: `flex_attention_generate.py` 第446行
+   - 修改前: `dataloader = dataset.get_dataloader(batch_size=8, shuffle=False)`
+   - 修改后: `dataloader = dataset.get_dataloader(batch_size=args.batch_size, shuffle=False)`
+   - 影响: 批处理大小现在完全可配置
+
+3. **✅ 添加GPU分布信息显示**
+   - 位置: `flex_attention_generate.py` 模型加载后
+   - 功能: 显示模型在各GPU上的层分布情况
+   - 输出示例:
+   ```
+   📊 Model distributed across 8 GPUs:
+      GPU 1: 2 layers
+      GPU 2: 4 layers
+      ...
+      GPU 8: 6 layers
+      Batch size: 24
+   ```
+
+4. **✅ 修改默认device为auto**
+   - 位置: `flex_attention_generate.py` argparse
+   - 修改前: `default="cuda"`
+   - 修改后: `default="auto"`
+   - 好处: HuggingFace自动选择最佳GPU分配策略
+
+5. **✅ 优化输出目录为/net存储**
+   - 位置: `flex_attention_generate.py` 第454行
+   - 修改: 改用 `/net/tokyo100-10g/data/str01_01/y-guo/datasets/`
+   - 原因: 本地home目录空间有限，使用网络存储
+
+#### 性能分析 / Performance Analysis
+
+**硬件配置**:
+- 10x NVIDIA RTX A6000 (每个47.5GB显存)
+- 模型自动分布在GPU 1-8
+- 每个GPU只用0.75GB存模型，还有~46GB空闲
+
+**Batch Size推荐**:
+| Batch Size | 显存使用 | 速度 | 推荐度 |
+|-----------|---------|------|--------|
+| 8-12 | ~10-12GB/GPU | 慢 | ⭐ 保守 |
+| 16-20 | ~15-18GB/GPU | 中等 | ⭐⭐⭐ 平衡 |
+| **24** | **~20-25GB/GPU** | **快** | **⭐⭐⭐⭐⭐ 推荐** |
+| 32 | ~28-32GB/GPU | 很快 | ⭐⭐⭐⭐ 激进 |
+
+**预估完成时间 (200样本)**:
+- batch_size=8: ~60-70分钟
+- batch_size=16: ~35-40分钟
+- **batch_size=24: ~25-30分钟** ⭐ 推荐
+- batch_size=32: ~20-25分钟
+
+#### 使用示例 / Usage Examples
+
+```bash
+# 推荐配置 - 充分利用GPU
+python3 flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --max_samples 200 \
+    --batch_size 24
+
+# 激进配置 - 追求速度
+python3 flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --max_samples 200 \
+    --batch_size 32
+
+# 保守配置 - 确保稳定
+python3 flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --max_samples 200 \
+    --batch_size 16
+```
+
+---
+
+## Previous Update - FlexAttention Bug Fixes Complete ✅
+**更新时间 / Update Time**: 2025-10-14 (早间)
 **提交信息 / Commit**: Fix all FlexAttention bugs - now working without fallback
 
 ### 🎯 完成所有FlexAttention修复 / All FlexAttention Fixes Complete
