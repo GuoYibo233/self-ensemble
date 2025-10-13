@@ -1,0 +1,136 @@
+======================================================================
+MASK MATRIX VISUALIZATION IMPROVEMENTS TEST
+======================================================================
+
+This test demonstrates the improvements for handling large sequences
+with hundreds of tokens, where the old version only showed 20x20.
+
+📊 Test Case:
+   Total sequence length: 248 tokens
+   Number of prompts: 5
+   Original length: 238
+   Generated tokens: 10
+
+=== OLD VERSION: Limited to 20x20 ===
+Attention Mask Visualization:
+  (✓ = can attend, ✗ = cannot attend)
+
+  Q\KV  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19
+     0  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     1  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     2  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     3  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     4  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     5  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     6  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     7  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     8  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+     9  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+    10  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+    11  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+    12  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗  ✗ 
+    13  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗  ✗ 
+    14  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗  ✗ 
+    15  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗  ✗ 
+    16  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗  ✗ 
+    17  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗  ✗ 
+    18  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✗ 
+    19  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓  ✓ 
+
+  ... (truncated, showing first 20x20 of 248x248)
+  ❌ PROBLEM: Cannot see the overall structure of 248 tokens!
+
+=== NEW VERSION: Smart Sampling for Large Sequences ===
+Attention Mask Visualization:
+
+Mask Matrix (248x248):
+  ✅ Showing 25 strategic positions (including segment boundaries)
+  Q\KV   0 16 32 47 48 63 79 94 95111127142143159175191192207222237238239240241242
+ S1   0  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+     16  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+     32  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ E1  47  ■  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ S2  48  ·  ·  ·  ·  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+     63  ·  ·  ·  ·  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+     79  ·  ·  ·  ·  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ E2  94  ·  ·  ·  ·  ■  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ S3  95  ·  ·  ·  ·  ·  ·  ·  ·  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+    111  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+    127  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ E3 142  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ S4 143  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+    159  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+    175  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ E4 191  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ■  ■  ·  ·  ·  ·  ·  ·  ·  ·  · 
+ S5 192  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ·  ·  ·  ·  ·  ·  ·  · 
+    207  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ·  ·  ·  ·  ·  ·  · 
+    222  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ■  ·  ·  ·  ·  ·  · 
+ E5 237  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ■  ■  ■  ■  ·  ·  ·  ·  · 
+ G0 238  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ·  ·  ·  · 
+    239  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ·  ·  · 
+    240  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ·  · 
+    241  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  · 
+    242  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■  ■ 
+
+  Legend:
+    ■ = can attend, · = cannot attend
+    S# = segment start, E# = segment end, G0 = generation start
+
+  Segment Boundaries:
+    Segment 1: positions   0- 47 (length 48)
+    Segment 2: positions  48- 94 (length 47)
+    Segment 3: positions  95-142 (length 48)
+    Segment 4: positions 143-191 (length 49)
+    Segment 5: positions 192-237 (length 46)
+  Original length: 238
+  Generated tokens: 10
+
+  ✅ Matrix shows sampled positions emphasizing structure - you can see the overall pattern!
+
+======================================================================
+SEPARATOR FORMATTING COMPARISON
+======================================================================
+
+--- OLD VERSION: No spacing ---
+Q: What is the capital of France?
+A: [SEP] Q: Which city is the capital of France?
+A: [SEP] Q: France's capital city is called?
+A:
+
+❌ PROBLEM: Hard to see where one prompt ends and another begins!
+
+----------------------------------------------------------------------
+--- NEW VERSION: Clear spacing with newlines ---
+Q: What is the capital of France?
+A:
+
+[SEP]
+
+Q: Which city is the capital of France?
+A:
+
+[SEP]
+
+Q: France's capital city is called?
+A:
+
+✅ IMPROVEMENT: Much clearer separation between prompts!
+
+======================================================================
+SUMMARY OF IMPROVEMENTS
+======================================================================
+
+1. ✅ Mask Matrix Visualization:
+   - OLD: Only showed first 20x20, couldn't see structure for large sequences
+   - NEW: Smart sampling shows segment boundaries and overall structure
+   - NEW: Uses better symbols (■/·) and adds segment markers (S#/E#/G0)
+
+2. ✅ Prompt Separator Formatting:
+   - OLD: Used ' [SEP] ' with no newlines, hard to read
+   - NEW: Uses '\n\n[SEP]\n\n' for clear visual separation
+
+3. ✅ Output Display:
+   - NEW: Shows each prompt segment separately with position ranges
+   - NEW: Clearly marks generated output section
+
+✅ All improvements implemented successfully!
