@@ -29,6 +29,7 @@ from constants import MODEL_PATHs
 # Try to import FlexAttention
 try:
     from torch.nn.attention.flex_attention import flex_attention, create_block_mask
+    from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
     FLEX_ATTENTION_AVAILABLE = True
     print("✅ FlexAttention is available")
 except ImportError:
@@ -201,8 +202,8 @@ class FlexAttentionWrapper:
             key_states = key_states.view(bsz, q_len, num_key_value_heads, head_dim).transpose(1, 2)
             value_states = value_states.view(bsz, q_len, num_key_value_heads, head_dim).transpose(1, 2)
             
-            # Apply rotary position embeddings
-            query_states, key_states = original_attn.apply_rotary_pos_emb(
+            # Apply rotary position embeddings - use the standalone function
+            query_states, key_states = apply_rotary_pos_emb(
                 query_states, key_states, cos, sin
             )
             
@@ -212,10 +213,11 @@ class FlexAttentionWrapper:
                 value_states = value_states.repeat_interleave(num_heads // num_key_value_heads, dim=1)
             
             # For FlexAttention, use simpler mask that doesn't require data-dependent control flow
+            # IMPORTANT: mask_mod must return a Tensor, not a Python bool
             def simple_mask_mod(b, h, q_idx, kv_idx):
                 # All tokens can attend to each other (no masking)
-                # FlexAttention will handle causal masking if needed
-                return True
+                # Return tensor True instead of Python True
+                return q_idx >= 0  # Always true, returns a tensor
             
             # Create block mask for FlexAttention
             try:
@@ -268,7 +270,8 @@ class FlexAttentionWrapper:
         for i, layer in enumerate(self.model.model.layers):
             attn = layer.self_attn
             self.original_forwards[i] = attn.forward
-            attn.forward = self.create_patched_forward(i, attn).__get__(attn)
+            # Directly replace forward without binding - the function already has correct signature
+            attn.forward = self.create_patched_forward(i, attn)
         
         self.is_patched = True
     
@@ -450,12 +453,16 @@ if __name__ == "__main__":
     model_path = MODEL_PATHs.get(args.model, args.model)
     
     # Reused pattern: Output file setup (from generate.py)
+    # Use local output directory to avoid permission issues
+    local_output_dir = f"/home/y-guo/self-ensemble/self-ensemble/datasets/{args.dataset}/{args.model}"
+    os.makedirs(local_output_dir, exist_ok=True)
+    
     if args.indexs is not None:
-        _root = os.path.join(dataset.dataset_root, "diversity")
+        _root = os.path.join(local_output_dir, "diversity")
         os.makedirs(_root, exist_ok=True)
         dump_file = f"{_root}/flex_attention-{args.indexs}.feather"
     else:
-        dump_file = f"{dataset.dataset_root}/flex_attention-{args.num_paraphrases}.feather"
+        dump_file = f"{local_output_dir}/flex_attention-{args.num_paraphrases}.feather"
     
     print(f"Output file: {dump_file}")
     

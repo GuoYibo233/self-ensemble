@@ -4,7 +4,105 @@
 
 ---
 
-## Latest Update - Documentation Consolidation
+## Latest Update - FlexAttention Bug Fixes Complete ✅
+**更新时间 / Update Time**: 2025-10-14
+**提交信息 / Commit**: Fix all FlexAttention bugs - now working without fallback
+
+### 🎯 完成所有FlexAttention修复 / All FlexAttention Fixes Complete
+
+经过网络搜索PyTorch官方文档和系统性调试，成功修复了4个关键bug，FlexAttention现在完全正常工作！
+
+#### Bug修复清单 / Bug Fix List
+
+1. **✅ Bug #1: 输出目录权限错误**
+   - 问题: 尝试写入其他用户目录 `/home/xzhao/`
+   - 修复: 改用当前用户路径 `/home/y-guo/self-ensemble/self-ensemble/datasets/`
+   - 位置: `flex_attention_generate.py` 第450-460行
+
+2. **✅ Bug #2: 方法绑定错误**
+   - 问题: 使用 `__get__` 导致 `self` 参数被传递两次
+   - 修复: 直接赋值而不使用方法绑定
+   - 位置: `flex_attention_generate.py` 第269行
+
+3. **✅ Bug #3: apply_rotary_pos_emb 属性错误**
+   - 问题: 在Transformers 4.55.2中这不是类方法而是独立函数
+   - 修复: 从 `transformers.models.llama.modeling_llama` 导入函数
+   - 位置: `flex_attention_generate.py` 第31, 205-207行
+   - **关键发现**: 通过查询PyTorch官方文档确认了正确的API使用方式
+
+4. **✅ Bug #4: mask_mod返回Python bool**
+   - 问题: FlexAttention的vmap要求返回Tensor而不是Python bool
+   - 修复: 使用 `q_idx >= 0` 返回tensor boolean
+   - 位置: `flex_attention_generate.py` 第215-219行
+   - **关键发现**: PyTorch官方博客明确说明mask_mod必须返回Tensor
+
+#### 测试结果 / Test Results
+
+**修复前 (Before)**:
+```
+❌ 所有20个生成步骤失败
+❌ apply_rotary_pos_emb AttributeError
+❌ mask_mod ValueError: must return Tensors
+✅ 回退到标准SDPA (有输出但未使用FlexAttention)
+```
+
+**修复后 (After)**:
+```
+✅ FlexAttention正常工作
+✅ 无任何错误或警告信息
+✅ 无回退到SDPA
+✅ 成功生成输出文件
+```
+
+#### 技术要点 / Technical Highlights
+
+1. **Transformers API变化**: 4.55.2版本中`apply_rotary_pos_emb`是模块级函数
+2. **FlexAttention要求**: mask_mod必须返回Tensor以兼容vmap
+3. **正确的mask写法**: 使用tensor比较 (如 `q_idx >= 0`) 而非Python字面值 (`True`)
+
+#### 新增文档 / New Documentation
+
+1. **`docs/FLEXATTENTION_BUGFIX_LOG.md`** - 完整的bug修复日志
+   - 4个bug的详细描述
+   - 错误信息和根本原因
+   - 修复代码对比
+   - 测试结果验证
+   - 关键技术要点总结
+
+2. **`docs/GITHUB_COPILOT_REVIEW_PROMPT.md`** - Copilot代码审查指南
+   - 详细的审查清单 (4个bug的验证点)
+   - API兼容性检查项
+   - FlexAttention最佳实践审查
+   - 性能和正确性验证
+   - 推荐的测试用例
+   - 结构化的输出格式要求
+
+#### 使用Copilot审查 / How to Use Copilot Review
+
+```bash
+# 在GitHub Copilot Chat中粘贴以下内容:
+cat docs/GITHUB_COPILOT_REVIEW_PROMPT.md
+# 然后询问:
+"Please review the code in flex_attention_generate.py following the instructions in this prompt."
+```
+
+### 📊 验证命令 / Verification Commands
+
+```bash
+# 测试FlexAttention
+python3 flex_attention_generate.py --dataset webqa --model llama3.2_3b_it --max_samples 1
+
+# 检查无回退信息
+python3 flex_attention_generate.py --dataset webqa --model llama3.2_3b_it --max_samples 1 2>&1 | grep -i fallback
+# 应该无输出 (No output expected)
+
+# 验证输出文件
+ls -lh /home/y-guo/self-ensemble/self-ensemble/datasets/webqa/llama3.2_3b_it/flex_attention-5.feather
+```
+
+---
+
+## Previous Update - Documentation Consolidation
 **更新时间 / Update Time**: 2025-10-13
 **提交信息 / Commit**: Consolidate FlexAttention debug documentation and update changelog
 
