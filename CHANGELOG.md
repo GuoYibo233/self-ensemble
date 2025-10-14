@@ -4,7 +4,163 @@
 
 ---
 
-## Latest Update - GPU Optimization and Multi-GPU Support 🚀
+## Latest Update - Complete Segment-Based Masking Implementation 🎯
+**更新时间 / Update Time**: 2025-10-14 (最新)
+**提交信息 / Commit**: Implement proper segment-based masking in create_flex_attention_mask
+
+### 🎯 实现完整的segment-based masking / Complete Segment-Based Masking
+
+根据PyTorch FlexAttention文档和attention-gym仓库的要求，完成了`create_flex_attention_mask`函数的实现，确保每个segment只能关注到自身。
+
+#### 改动清单 / Change List
+
+1. **✅ 实现create_flex_attention_mask函数**
+   - 位置: `flex_attention_generate.py` 第133-204行
+   - 功能: 创建基于segment的attention mask
+   - 关键特性:
+     * 编码阶段: 每个segment只能关注自己内部的tokens
+     * 生成阶段: 新生成的tokens可以关注所有之前的tokens
+     * 始终遵循causal约束 (不能关注未来的tokens)
+     * 使用tensor操作避免data-dependent控制流
+
+2. **✅ 使用tensor操作实现masking逻辑**
+   - 问题: FlexAttention的vmap编译不支持data-dependent控制流
+   - 解决: 将segment_positions转换为tensors，使用tensor比较操作
+   - 实现细节:
+     ```python
+     # 将segment边界转换为tensors
+     segment_starts = torch.tensor([start for start, _ in segment_positions])
+     segment_ends = torch.tensor([end for _, end in segment_positions])
+     
+     # 使用tensor操作检查segment成员关系
+     q_in_segment = (q_idx >= segment_starts) & (q_idx < segment_ends)
+     kv_in_segment = (kv_idx >= segment_starts) & (kv_idx < segment_ends)
+     same_segment = (q_in_segment & kv_in_segment).any()
+     ```
+
+3. **✅ 更新create_patched_forward使用实际的mask_mod**
+   - 位置: `flex_attention_generate.py` 第262-278行
+   - 修改前: 使用硬编码的`simple_mask_mod`（总是返回True）
+   - 修改后: 使用`self.current_mask_mod`（实际的segment-based mask）
+   - 影响: FlexAttention现在真正实现segment隔离
+
+4. **✅ 确保mask_mod返回Tensor类型**
+   - 关键: mask_mod必须返回Tensor boolean，不能是Python bool
+   - 实现: 所有比较操作(>=, &, |)都返回Tensor
+   - 验证: `causal_mask`, `is_generated`, `same_segment`都是Tensor类型
+
+#### 技术细节 / Technical Details
+
+**Masking逻辑**:
+```python
+def mask_mod(b, h, q_idx, kv_idx):
+    # 1. Causal constraint (必须)
+    causal_mask = q_idx >= kv_idx  # Tensor[bool]
+    
+    # 2. Generation phase check
+    is_generated = q_idx >= original_length  # Tensor[bool]
+    
+    # 3. Segment membership check
+    q_in_segment = (q_idx >= segment_starts) & (q_idx < segment_ends)  # Tensor[num_segments, bool]
+    kv_in_segment = (kv_idx >= segment_starts) & (kv_idx < segment_ends)
+    same_segment = (q_in_segment & kv_in_segment).any()  # Tensor[bool]
+    
+    # 4. Combine all constraints
+    result = causal_mask & (is_generated | same_segment)  # Tensor[bool]
+    return result
+```
+
+**数据类型验证**:
+- `q_idx`, `kv_idx`: Tensor (来自FlexAttention)
+- `segment_starts`, `segment_ends`: Tensor[int64]
+- `causal_mask`, `is_generated`, `same_segment`: Tensor[bool]
+- `result`: Tensor[bool] ✅
+
+**Tensor形状检查**:
+- `segment_starts`: shape [num_segments]
+- `segment_ends`: shape [num_segments]
+- `q_in_segment`: shape [num_segments]
+- `kv_in_segment`: shape [num_segments]
+- Broadcasting正确处理不同shapes
+
+#### 与PyTorch文档的对齐 / Alignment with PyTorch Documentation
+
+根据PyTorch FlexAttention博客和attention-gym仓库:
+
+1. **✅ mask_mod签名正确**: `(batch, head, q_idx, kv_idx) -> Tensor[bool]`
+2. **✅ 返回Tensor类型**: 使用tensor操作，返回Tensor boolean
+3. **✅ 避免data-dependent控制流**: 不使用Python loops或复杂if语句
+4. **✅ 使用tensor操作**: 只使用>=, &, |, .any()等tensor操作
+5. **✅ 可以捕获外部变量**: segment_starts, segment_ends, original_length
+
+#### 测试和验证 / Testing and Validation
+
+建议的测试命令:
+```bash
+# 基础测试 - 生成1个样本
+python3 flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --max_samples 1 \
+    --num_paraphrases 5
+
+# 调试测试 - 查看mask可视化
+python3 tools/debug_flexattention.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --max-samples 1 \
+    --verbose
+
+# Mask可视化测试 - 无需模型
+python3 test_mask_visualization.py
+```
+
+#### 预期行为 / Expected Behavior
+
+**编码阶段** (positions 0 to original_length-1):
+```
+Segment 1 tokens → only attend to Segment 1
+Segment 2 tokens → only attend to Segment 2
+...
+Segment 5 tokens → only attend to Segment 5
+```
+
+**生成阶段** (positions >= original_length):
+```
+Generated token 1 → attends to ALL segments + previous generated
+Generated token 2 → attends to ALL segments + all previous generated
+...
+```
+
+**可视化示例**:
+```
+  Q\KV  S1  S2  S3  S4  S5  G1  G2
+  S1    ■   ·   ·   ·   ·   ·   ·    (Segment 1只关注自己)
+  S2    ·   ■   ·   ·   ·   ·   ·    (Segment 2只关注自己)
+  S3    ·   ·   ■   ·   ·   ·   ·    (Segment 3只关注自己)
+  S4    ·   ·   ·   ■   ·   ·   ·    (Segment 4只关注自己)
+  S5    ·   ·   ·   ·   ■   ·   ·    (Segment 5只关注自己)
+  G1    ■   ■   ■   ■   ■   ■   ·    (生成token关注所有)
+  G2    ■   ■   ■   ■   ■   ■   ■    (生成token关注所有)
+```
+
+#### 影响范围 / Impact
+
+- 🟢 **功能完整**: 实现了完整的segment isolation
+- 🟢 **类型安全**: 所有操作返回正确的Tensor类型
+- 🟢 **vmap兼容**: 使用tensor操作，避免data-dependent控制流
+- 🟢 **向后兼容**: 不影响其他功能
+
+#### 相关文档 / Related Documentation
+
+- PyTorch FlexAttention博客: https://pytorch.org/blog/flexattention/
+- attention-gym仓库: https://github.com/meta-pytorch/attention-gym
+- 本地测试文件: `test_mask_visualization.py`
+- 调试工具: `tools/debug_flexattention.py`
+
+---
+
+## Previous Update - GPU Optimization and Multi-GPU Support 🚀
 **更新时间 / Update Time**: 2025-10-14 (晚间)
 **提交信息 / Commit**: Optimize batch size and add multi-GPU support for better resource utilization
 

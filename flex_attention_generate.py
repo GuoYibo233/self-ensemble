@@ -134,21 +134,72 @@ def create_flex_attention_mask(segment_positions, original_length):
     """
     Create attention mask for multi-paraphrase ensemble generation.
     
-    NOTE: This version creates a simpler mask to avoid vmap issues with 
-    data-dependent control flow in FlexAttention.
+    This implements segment-based masking where:
+    - During encoding (positions < original_length): Each segment only attends to itself
+    - During generation (positions >= original_length): New tokens attend to all previous tokens
+    - Always respects causal constraint (cannot attend to future tokens)
+    
+    The implementation uses tensor operations to avoid data-dependent control flow
+    that would fail FlexAttention's vmap compilation.
     
     Args:
-        segment_positions: List of (start, end) tuples
+        segment_positions: List of (start, end) tuples defining segment boundaries
         original_length: Length of the original concatenated sequence
         
     Returns:
-        mask_mod: Function (b, h, q_idx, kv_idx) -> bool
+        mask_mod: Function (b, h, q_idx, kv_idx) -> Tensor[bool]
     """
+    # Convert segment positions to tensors for efficient computation
+    # This allows us to use tensor operations instead of loops
+    import torch
+    
+    # Create tensors for segment boundaries
+    # Each segment is defined by [start, end) range
+    segment_starts = torch.tensor([start for start, _ in segment_positions], dtype=torch.int64)
+    segment_ends = torch.tensor([end for _, end in segment_positions], dtype=torch.int64)
+    num_segments = len(segment_positions)
+    
     def mask_mod(b, h, q_idx, kv_idx):
-        # For now, just enforce causal constraint to avoid vmap issues
-        # The complex segment-based masking is causing data-dependent control flow
-        # that FlexAttention's compilation doesn't support yet
-        return q_idx >= kv_idx
+        """
+        Mask function for FlexAttention.
+        
+        Returns True (as tensor) if query can attend to key, False otherwise.
+        Must return Tensor boolean for vmap compatibility.
+        """
+        # First check causal constraint - cannot attend to future
+        # This must come first as it's always enforced
+        causal_mask = q_idx >= kv_idx
+        
+        # If query is in generation phase (after original content),
+        # it can attend to all previous tokens (subject to causal constraint)
+        is_generated = q_idx >= original_length
+        
+        # For generated tokens, only causal constraint applies
+        # We use torch.where to avoid data-dependent branching
+        # If is_generated, return causal_mask; otherwise continue to segment check
+        
+        # For original tokens, check segment membership
+        # A token can attend if it's in the same segment
+        # We need to determine which segment q_idx and kv_idx belong to
+        
+        # Check which segment q_idx belongs to
+        # q_in_segment[i] = True if segment_starts[i] <= q_idx < segment_ends[i]
+        q_in_segment = (q_idx >= segment_starts) & (q_idx < segment_ends)
+        
+        # Check which segment kv_idx belongs to  
+        # kv_in_segment[i] = True if segment_starts[i] <= kv_idx < segment_ends[i]
+        kv_in_segment = (kv_idx >= segment_starts) & (kv_idx < segment_ends)
+        
+        # Both must be in the same segment for attention to be allowed
+        # same_segment = any(q_in_segment[i] AND kv_in_segment[i])
+        same_segment = (q_in_segment & kv_in_segment).any()
+        
+        # Combine all constraints:
+        # 1. Must satisfy causal constraint (q_idx >= kv_idx)
+        # 2. Either q is generated token OR q and kv are in same segment
+        result = causal_mask & (is_generated | same_segment)
+        
+        return result
     
     return mask_mod
 
@@ -212,17 +263,14 @@ class FlexAttentionWrapper:
                 key_states = key_states.repeat_interleave(num_heads // num_key_value_heads, dim=1)
                 value_states = value_states.repeat_interleave(num_heads // num_key_value_heads, dim=1)
             
-            # For FlexAttention, use simpler mask that doesn't require data-dependent control flow
+            # Use the mask_mod function from create_flex_attention_mask
+            # This implements segment-based masking using tensor operations
             # IMPORTANT: mask_mod must return a Tensor, not a Python bool
-            def simple_mask_mod(b, h, q_idx, kv_idx):
-                # All tokens can attend to each other (no masking)
-                # Return tensor True instead of Python True
-                return q_idx >= 0  # Always true, returns a tensor
             
             # Create block mask for FlexAttention
             try:
                 block_mask = create_block_mask(
-                    simple_mask_mod,  # Use simple mask instead of complex one
+                    self.current_mask_mod,  # Use the segment-based mask
                     B=bsz,
                     H=num_heads, 
                     Q_LEN=q_len,
