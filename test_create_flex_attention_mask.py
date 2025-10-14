@@ -254,6 +254,9 @@ def visualize_mask_matrix():
     print_section("Test 7: Mask Matrix Visualization")
     
     # Small test case for full visualization
+    # Test setup: 3 segments of 3 tokens each, plus 3 generated tokens
+    # Segment 1: positions [0-2], Segment 2: [3-5], Segment 3: [6-8]
+    # Generated: positions [9-11]
     segment_positions = [(0, 3), (3, 6), (6, 9)]
     original_length = 9
     seq_len = 12  # 9 original + 3 generated
@@ -302,15 +305,36 @@ def visualize_mask_matrix():
     
     # Verify segment isolation
     print("\nVerifying segment isolation pattern:")
-    # Check that segments don't attend to each other
-    assert not matrix[1][4], "Segment 1 should not attend to Segment 2"
-    assert not matrix[4][1], "Segment 2 should not attend to Segment 1"
-    assert not matrix[7][1], "Segment 3 should not attend to Segment 1"
     
-    # Check that generated tokens attend to all
-    assert matrix[9][0], "Generated should attend to Segment 1"
-    assert matrix[9][3], "Generated should attend to Segment 2"
-    assert matrix[9][6], "Generated should attend to Segment 3"
+    # Dynamically verify based on segment_positions
+    # Check that segments don't attend to each other
+    seg1_token = 1  # Token in segment 1 (position 1 is in [0,3))
+    seg2_token = 4  # Token in segment 2 (position 4 is in [3,6))
+    seg3_token = 7  # Token in segment 3 (position 7 is in [6,9))
+    
+    # Verify segment isolation: tokens in different segments cannot attend
+    assert not matrix[seg1_token][seg2_token], \
+        f"Segment 1 (pos {seg1_token}) should not attend to Segment 2 (pos {seg2_token})"
+    assert not matrix[seg2_token][seg1_token], \
+        f"Segment 2 (pos {seg2_token}) should not attend to Segment 1 (pos {seg1_token})"
+    assert not matrix[seg3_token][seg1_token], \
+        f"Segment 3 (pos {seg3_token}) should not attend to Segment 1 (pos {seg1_token})"
+    
+    # Check that generated tokens attend to all segments
+    first_gen = original_length  # Position 9 is first generated token
+    assert first_gen < seq_len, "Test setup requires generated tokens"
+    
+    # Get one token from each segment for verification
+    seg1_pos = segment_positions[0][0]  # First token of segment 1
+    seg2_pos = segment_positions[1][0]  # First token of segment 2
+    seg3_pos = segment_positions[2][0]  # First token of segment 3
+    
+    assert matrix[first_gen][seg1_pos], \
+        f"Generated token (pos {first_gen}) should attend to Segment 1 (pos {seg1_pos})"
+    assert matrix[first_gen][seg2_pos], \
+        f"Generated token (pos {first_gen}) should attend to Segment 2 (pos {seg2_pos})"
+    assert matrix[first_gen][seg3_pos], \
+        f"Generated token (pos {first_gen}) should attend to Segment 3 (pos {seg3_pos})"
     
     print("✅ Segment isolation verified")
     print("✅ Generation phase full attention verified")
