@@ -41,6 +41,7 @@ This repository implements self-ensemble methods for natural language generation
 | **[docs/README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md)** | FlexAttention overview |
 | **[docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** | API quick reference |
 | **[docs/FLEX_ATTENTION_IMPLEMENTATION.md](docs/FLEX_ATTENTION_IMPLEMENTATION.md)** | Technical details |
+| **[docs/CREATE_FLEX_ATTENTION_MASK_IMPLEMENTATION.md](docs/CREATE_FLEX_ATTENTION_MASK_IMPLEMENTATION.md)** | Mask function implementation guide |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Visual diagrams |
 | **[docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md)** | Component breakdown |
 | **[FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md)** | Usage guide with --max_samples and analysis tools |

@@ -15,6 +15,7 @@ Choose your documentation based on your needs:
 
 ### For Implementation
 - **[flex_attention_generate.py](flex_attention_generate.py)** - Main implementation file
+- **[CREATE_FLEX_ATTENTION_MASK_IMPLEMENTATION.md](CREATE_FLEX_ATTENTION_MASK_IMPLEMENTATION.md)** - Detailed guide for the mask function
 
 ---
 
