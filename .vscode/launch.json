@@ -1,0 +1,103 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug FlexAttention - WebQA",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/flex_attention_generate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataset", "webqa",
+                "--model", "llama3.2_3b_it",
+                "--num_paraphrases", "3",
+                "--device", "cuda"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Debug FlexAttention - MyriadLAMA",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/flex_attention_generate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataset", "myriadlama",
+                "--model", "llama3.2_3b_it",
+                "--num_paraphrases", "3",
+                "--device", "cuda"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Debug Script - WebQA (2 samples)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/debug_flexattention.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataset", "webqa",
+                "--model", "llama3.2_3b_it",
+                "--max-samples", "2",
+                "--max-tokens", "5",
+                "--verbose"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Debug Script - MyriadLAMA (1 sample)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/debug_flexattention.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataset", "myriadlama",
+                "--model", "llama3.2_3b_it",
+                "--max-samples", "1",
+                "--max-tokens", "5",
+                "--verbose"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Validate Environment",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/validate_flexattention_env.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--verbose",
+                "--test-flex-attention"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Original Generate - per_prompt",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/generate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--method", "per_prompt",
+                "--dataset", "webqa",
+                "--model", "llama3.2_3b_it",
+                "--num_ensemble", "3"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Original Generate - avg",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/generate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--method", "avg",
+                "--dataset", "webqa",
+                "--model", "llama3.2_3b_it",
+                "--num_ensemble", "3"
+            ],
+            "justMyCode": false
+        }
+    ]
+}
