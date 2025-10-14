@@ -34,25 +34,46 @@ def visualize_mask(mask_func, seq_len, max_display=15):
     print("\nAttention Mask Visualization:")
     print("  (✓ = can attend, ✗ = cannot attend)")
     
-    display_len = min(seq_len, max_display)
+    # For large sequences, sample positions to show overall structure
+    if seq_len > max_display:
+        # Sample positions: include start, end, and evenly spaced middle positions
+        step = max(1, seq_len // (max_display - 2))
+        positions = list(range(0, min(max_display // 2, seq_len), 1))  # First few
+        # Middle positions (sampled)
+        middle_start = max_display // 2
+        middle_end = seq_len - max_display // 4
+        if middle_end > middle_start:
+            positions.extend(range(middle_start, middle_end, step))
+        # Last few positions
+        positions.extend(range(max(middle_end, seq_len - max_display // 4), seq_len))
+        positions = sorted(list(set(positions)))[:max_display]  # Deduplicate and limit
+        
+        print(f"\n  Showing {len(positions)} sampled positions from {seq_len} total tokens")
+        print(f"  Sampling pattern: first positions + evenly-spaced middle + last positions")
+    else:
+        positions = list(range(seq_len))
     
-    # Print header
+    display_len = len(positions)
+    
+    # Print header with actual position numbers
     print("\n  Q\\KV", end="")
-    for kv in range(display_len):
-        print(f" {kv:2d}", end="")
+    for kv_pos in positions:
+        print(f" {kv_pos:2d}", end="")
     print()
     
-    # Print matrix
-    for q in range(display_len):
-        print(f"   {q:2d}  ", end="")
-        for kv in range(display_len):
-            can_attend = mask_func(0, 0, q, kv)
+    # Print matrix with actual positions
+    for q_pos in positions:
+        print(f"  {q_pos:4d} ", end="")
+        for kv_pos in positions:
+            can_attend = mask_func(0, 0, q_pos, kv_pos)
             symbol = "✓" if can_attend else "✗"
             print(f" {symbol} ", end="")
         print()
     
     if seq_len > max_display:
-        print(f"\n  ... (showing first {max_display}x{max_display} of {seq_len}x{seq_len})")
+        print(f"\n  (Sampled {display_len}x{display_len} positions from full {seq_len}x{seq_len} matrix)")
+    else:
+        print(f"\n  (Full {seq_len}x{seq_len} matrix)")
 
 
 def example_1_causal_mask():
