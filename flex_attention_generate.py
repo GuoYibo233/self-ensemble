@@ -166,6 +166,11 @@ def create_flex_attention_mask(segment_positions, original_length):
         Returns True (as tensor) if query can attend to key, False otherwise.
         Must return Tensor boolean for vmap compatibility.
         """
+        # Move segment tensors to the same device as q_idx to avoid device mismatch
+        device = q_idx.device
+        seg_starts = segment_starts.to(device)
+        seg_ends = segment_ends.to(device)
+        
         # First check causal constraint - cannot attend to future
         # This must come first as it's always enforced
         causal_mask = q_idx >= kv_idx
@@ -184,11 +189,11 @@ def create_flex_attention_mask(segment_positions, original_length):
         
         # Check which segment q_idx belongs to
         # q_in_segment[i] = True if segment_starts[i] <= q_idx < segment_ends[i]
-        q_in_segment = (q_idx >= segment_starts) & (q_idx < segment_ends)
+        q_in_segment = (q_idx >= seg_starts) & (q_idx < seg_ends)
         
         # Check which segment kv_idx belongs to  
         # kv_in_segment[i] = True if segment_starts[i] <= kv_idx < segment_ends[i]
-        kv_in_segment = (kv_idx >= segment_starts) & (kv_idx < segment_ends)
+        kv_in_segment = (kv_idx >= seg_starts) & (kv_idx < seg_ends)
         
         # Both must be in the same segment for attention to be allowed
         # same_segment = any(q_in_segment[i] AND kv_in_segment[i])
