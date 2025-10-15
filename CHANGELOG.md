@@ -4,7 +4,61 @@
 
 ---
 
-## Latest Update - Complete Segment-Based Masking Implementation 🎯
+## Latest Update - Device Mismatch Fix for Multi-GPU 🚀
+**更新时间 / Update Time**: 2025-10-15 (最新)
+**提交信息 / Commit**: Fix tensor device mismatch in FlexAttention mask_mod function
+
+### 🎯 修复多GPU环境下的设备不匹配错误 / Fix Device Mismatch in Multi-GPU Setup
+
+在多GPU环境下运行FlexAttention时，出现了CPU和CUDA设备不匹配的错误。通过动态检测设备并移动张量解决了这个问题。
+
+#### 问题描述 / Problem Description
+
+**错误信息 / Error Message**:
+```
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:8 and cpu!
+```
+
+**根本原因 / Root Cause**:
+- `segment_starts` 和 `segment_ends` 张量在CPU上创建（默认设备）
+- `q_idx` 和 `kv_idx` 在模型运行的CUDA设备上（如 cuda:8）
+- 张量操作时两个设备的张量无法比较
+
+#### 改动清单 / Change List
+
+1. **✅ 在mask_mod函数中添加设备检测和张量移动**
+   - 位置: `flex_attention_generate.py` 第169-172行
+   - 功能: 动态检测设备并移动segment张量到正确设备
+   - 代码:
+     ```python
+     # Move segment tensors to the same device as q_idx to avoid device mismatch
+     device = q_idx.device
+     seg_starts = segment_starts.to(device)
+     seg_ends = segment_ends.to(device)
+     ```
+
+2. **✅ 更新张量引用使用设备感知的张量**
+   - 位置: `flex_attention_generate.py` 第192, 196行
+   - 修改前: 直接使用 `segment_starts` 和 `segment_ends`
+   - 修改后: 使用 `seg_starts` 和 `seg_ends`（已移动到正确设备）
+   - 影响: 所有张量操作现在都在同一设备上进行
+
+#### 技术要点 / Technical Notes
+
+- `.to(device)` 是幂等操作 - 如果张量已在目标设备上，则返回相同张量
+- 这是FlexAttention mask函数使用闭包变量的标准模式
+- 修复后可在多GPU配置下无缝工作
+- 兼容 `device_map="auto"` 的多GPU推理
+
+#### 性能影响 / Performance Impact
+
+- 开销极小：segment张量很小（通常只有5个元素）
+- PyTorch会缓存移动后的张量
+- 如果已在目标设备上，则为无操作
+
+---
+
+## Previous Update - Complete Segment-Based Masking Implementation 🎯
 **更新时间 / Update Time**: 2025-10-14 (最新)
 **提交信息 / Commit**: Implement proper segment-based masking in create_flex_attention_mask
 

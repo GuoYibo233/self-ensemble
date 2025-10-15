@@ -142,12 +142,19 @@ def create_flex_attention_mask(segment_positions, original_length):
     The implementation uses tensor operations to avoid data-dependent control flow
     that would fail FlexAttention's vmap compilation.
     
+    Device Handling:
+    - Segment boundary tensors are created on CPU by default
+    - They are dynamically moved to the model's device (CUDA) at runtime
+    - This enables multi-GPU compatibility with device_map="auto"
+    
     Args:
         segment_positions: List of (start, end) tuples defining segment boundaries
         original_length: Length of the original concatenated sequence
         
     Returns:
         mask_mod: Function (b, h, q_idx, kv_idx) -> Tensor[bool]
+            The mask function that FlexAttention will use to create block masks.
+            Returns a boolean tensor indicating whether attention is allowed.
     """
     # Convert segment positions to tensors for efficient computation
     # This allows us to use tensor operations instead of loops
@@ -163,10 +170,34 @@ def create_flex_attention_mask(segment_positions, original_length):
         """
         Mask function for FlexAttention.
         
-        Returns True (as tensor) if query can attend to key, False otherwise.
-        Must return Tensor boolean for vmap compatibility.
+        This function is called by FlexAttention's vmap to determine which
+        query-key pairs should be masked. It must return a Tensor (not Python bool)
+        for vmap compatibility.
+        
+        Device Handling (Bug Fix #5):
+        - Segment tensors are moved to q_idx.device dynamically
+        - This fixes "Expected all tensors to be on the same device" error
+        - Enables multi-GPU setups where model layers are on different devices
+        
+        Args:
+            b: Batch index (tensor)
+            h: Head index (tensor)
+            q_idx: Query position index (tensor, on model's device)
+            kv_idx: Key/Value position index (tensor, on model's device)
+            
+        Returns:
+            Tensor[bool]: True if query can attend to key, False otherwise
         """
-        # Move segment tensors to the same device as q_idx to avoid device mismatch
+        # DEVICE HANDLING FIX (Bug #5):
+        # Move segment tensors to the same device as q_idx to avoid device mismatch.
+        # In multi-GPU setups, q_idx is on CUDA (e.g., cuda:8) but segment_starts/ends
+        # are created on CPU by default. PyTorch doesn't allow operations between
+        # tensors on different devices, causing RuntimeError.
+        # 
+        # Solution: Dynamically detect device and move tensors using .to(device)
+        # - This is idempotent: if already on target device, returns same tensor
+        # - Minimal overhead: tensors are small (typically 5 elements)
+        # - Standard pattern for FlexAttention mask functions with closure variables
         device = q_idx.device
         seg_starts = segment_starts.to(device)
         seg_ends = segment_ends.to(device)
