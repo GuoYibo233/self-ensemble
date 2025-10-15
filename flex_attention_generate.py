@@ -504,8 +504,8 @@ if __name__ == "__main__":
         help="Maximum number of samples to generate (default: None, process all)"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=16,
-        help="Batch size for dataloader (default: 16, good for 10 GPUs)"
+        "--batch_size", type=int, default=1,
+        help="Dataloader batch size (default: 1). Note: FlexAttention processes samples sequentially."
     )
     args = parser.parse_args()
     
@@ -527,8 +527,10 @@ if __name__ == "__main__":
         raise ValueError("Unsupported dataset")
     
     # Reused pattern: Dataloader setup (from generate.py)
-    # Use user-specified batch_size for better GPU utilization
-    dataloader = dataset.get_dataloader(batch_size=args.batch_size, shuffle=False)
+    # NOTE: FlexAttention processes samples sequentially due to variable-length concatenation
+    # batch_size parameter here only controls dataloader batching, not GPU batching
+    # For accurate progress tracking, we use batch_size=1
+    dataloader = dataset.get_dataloader(batch_size=1, shuffle=False)
     
     if args.model not in MODEL_PATHs:
         raise ValueError(
@@ -599,7 +601,10 @@ if __name__ == "__main__":
         for gpu_id in sorted(gpu_usage.keys()):
             layer_count = len(gpu_usage[gpu_id])
             print(f"   GPU {gpu_id}: {layer_count} layers")
-    print(f"   Batch size: {args.batch_size}")
+    
+    print(f"\n⚙️  Processing mode: Sequential (one sample at a time)")
+    print(f"   Reason: Variable-length concatenation in FlexAttention")
+    print(f"   Expected GPU utilization: Low (5-15%) due to sequential processing")
     
     # Reused pattern: DataFrame initialization (from generate.py)
     df = pd.DataFrame(columns=["uuid", "answers", "prediction", "generation"])

@@ -258,13 +258,12 @@ def mask_mod(b, h, q_idx, kv_idx):
 ## Verification Commands
 
 ```bash
-# Test the fixed implementation (multi-GPU)
+# Test the fixed implementation (recommended settings)
 cd /home/y-guo/self-ensemble/self-ensemble
 python3 flex_attention_generate.py \
     --dataset webqa \
     --model llama3.2_3b_it \
-    --max_samples 50 \
-    --batch_size 24
+    --max_samples 200
 
 # Test with single sample
 python3 flex_attention_generate.py --dataset webqa --model llama3.2_3b_it --max_samples 1
@@ -275,6 +274,43 @@ python3 flex_attention_generate.py --dataset webqa --model llama3.2_3b_it --max_
 # Verify output file creation
 ls -lh /home/y-guo/self-ensemble/self-ensemble/datasets/webqa/llama3.2_3b_it/flex_attention-5.feather
 ```
+
+**Note on batch_size parameter**: The `--batch_size` parameter is deprecated for FlexAttention. The implementation processes samples sequentially due to variable-length concatenation requirements. Use default value (1) for accurate progress tracking.
+
+---
+
+## Performance Characteristics
+
+### Expected Behavior
+
+**GPU Utilization**: 
+- Expected: 5-15% per GPU during generation
+- Reason: Sequential processing due to variable-length inputs
+- This is **normal** and not a performance issue
+
+**Progress Bar**:
+- Shows progress through total dataset samples
+- With `--max_samples 200`, processes 200 samples sequentially
+- Progress increments one sample at a time
+
+**Processing Speed**:
+- ~20 tokens generated per sample
+- Multiple forward passes per token (patching/unpatching overhead)
+- Multi-GPU distribution handles model layers, not batching
+
+### Why Sequential Processing?
+
+FlexAttention with variable-length concatenation requires:
+1. Different segment positions for each sample
+2. Dynamic mask creation per sample
+3. Model patching/unpatching for each generation step
+
+Batching would require:
+- Padding all samples to same length (wasteful)
+- Complex batched mask creation
+- Significant implementation complexity
+
+**Design decision**: Sequential processing prioritizes correctness and simplicity over throughput.
 
 ---
 
