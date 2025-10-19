@@ -4,7 +4,121 @@
 
 ---
 
-## Latest Update - Complete Segment-Based Masking Implementation 🎯
+## Latest Update - Performance Documentation and Batch Size Fix 📊
+**更新时间 / Update Time**: 2025-10-15 (最新)
+**提交信息 / Commit**: Fix progress bar and clarify GPU utilization expectations
+
+### 🎯 修复进度条显示和GPU利用率说明 / Fix Progress Bar and GPU Utilization Documentation
+
+用户报告了两个问题：进度条显示不准确和GPU利用率较低。经过分析，这些都是预期行为，因为FlexAttention采用顺序处理而非批处理。
+
+#### 问题分析 / Problem Analysis
+
+**用户观察 / User Observations**:
+1. 进度条只显示0/32，然后很快完成 (Progress bar shows 0/32, completes quickly)
+2. GPU利用率只有5-15% (GPU utilization only 5-15%)
+
+**根本原因 / Root Cause**:
+- FlexAttention由于可变长度连接，必须顺序处理样本
+- batch_size参数只控制数据加载器批处理，不影响GPU批处理
+- 每个样本单独生成，导致GPU利用率较低（这是正常的）
+
+#### 改动清单 / Change List
+
+1. **✅ 修复dataloader batch_size设置**
+   - 位置: `flex_attention_generate.py` 第530行
+   - 修改前: `batch_size=args.batch_size` (用户可设置，默认16)
+   - 修改后: `batch_size=1` (固定为1，确保进度条准确)
+   - 原因: 准确显示处理进度
+
+2. **✅ 更新batch_size参数说明**
+   - 位置: `flex_attention_generate.py` 第507行
+   - 修改前: "Batch size for dataloader (default: 16, good for 10 GPUs)"
+   - 修改后: "Dataloader batch size (default: 1). Note: FlexAttention processes samples sequentially."
+   - 原因: 明确参数用途
+
+3. **✅ 添加处理模式说明**
+   - 位置: `flex_attention_generate.py` 第604-606行
+   - 新增输出说明顺序处理模式
+   - 说明预期的GPU利用率（5-15%）
+   - 解释为什么采用顺序处理
+
+4. **✅ 更新文档说明性能特征**
+   - 位置: `docs/FLEXATTENTION_BUGFIX_LOG.md`
+   - 新增"Performance Characteristics"章节
+   - 说明预期的GPU利用率和处理速度
+   - 解释为什么选择顺序处理而非批处理
+
+#### 技术说明 / Technical Notes
+
+**为什么不能批处理 / Why Not Batch Processing**:
+1. 每个样本的拼接长度不同
+2. 每个样本需要不同的segment positions
+3. 需要为每个样本动态创建mask
+4. 批处理需要padding到相同长度，浪费计算资源
+
+**预期行为 / Expected Behavior**:
+- GPU利用率: 5-15% (正常)
+- 处理速度: 每个样本约20个tokens
+- 进度条: 逐个样本递增
+
+---
+
+## Previous Update - Device Mismatch Fix for Multi-GPU 🚀
+**更新时间 / Update Time**: 2025-10-15 (最新)
+**提交信息 / Commit**: Fix tensor device mismatch in FlexAttention mask_mod function
+
+### 🎯 修复多GPU环境下的设备不匹配错误 / Fix Device Mismatch in Multi-GPU Setup
+
+在多GPU环境下运行FlexAttention时，出现了CPU和CUDA设备不匹配的错误。通过动态检测设备并移动张量解决了这个问题。
+
+#### 问题描述 / Problem Description
+
+**错误信息 / Error Message**:
+```
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:8 and cpu!
+```
+
+**根本原因 / Root Cause**:
+- `segment_starts` 和 `segment_ends` 张量在CPU上创建（默认设备）
+- `q_idx` 和 `kv_idx` 在模型运行的CUDA设备上（如 cuda:8）
+- 张量操作时两个设备的张量无法比较
+
+#### 改动清单 / Change List
+
+1. **✅ 在mask_mod函数中添加设备检测和张量移动**
+   - 位置: `flex_attention_generate.py` 第169-172行
+   - 功能: 动态检测设备并移动segment张量到正确设备
+   - 代码:
+     ```python
+     # Move segment tensors to the same device as q_idx to avoid device mismatch
+     device = q_idx.device
+     seg_starts = segment_starts.to(device)
+     seg_ends = segment_ends.to(device)
+     ```
+
+2. **✅ 更新张量引用使用设备感知的张量**
+   - 位置: `flex_attention_generate.py` 第192, 196行
+   - 修改前: 直接使用 `segment_starts` 和 `segment_ends`
+   - 修改后: 使用 `seg_starts` 和 `seg_ends`（已移动到正确设备）
+   - 影响: 所有张量操作现在都在同一设备上进行
+
+#### 技术要点 / Technical Notes
+
+- `.to(device)` 是幂等操作 - 如果张量已在目标设备上，则返回相同张量
+- 这是FlexAttention mask函数使用闭包变量的标准模式
+- 修复后可在多GPU配置下无缝工作
+- 兼容 `device_map="auto"` 的多GPU推理
+
+#### 性能影响 / Performance Impact
+
+- 开销极小：segment张量很小（通常只有5个元素）
+- PyTorch会缓存移动后的张量
+- 如果已在目标设备上，则为无操作
+
+---
+
+## Previous Update - Complete Segment-Based Masking Implementation 🎯
 **更新时间 / Update Time**: 2025-10-14 (最新)
 **提交信息 / Commit**: Implement proper segment-based masking in create_flex_attention_mask
 

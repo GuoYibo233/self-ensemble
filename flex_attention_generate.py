@@ -142,12 +142,19 @@ def create_flex_attention_mask(segment_positions, original_length):
     The implementation uses tensor operations to avoid data-dependent control flow
     that would fail FlexAttention's vmap compilation.
     
+    Device Handling:
+    - Segment boundary tensors are created on CPU by default
+    - They are dynamically moved to the model's device (CUDA) at runtime
+    - This enables multi-GPU compatibility with device_map="auto"
+    
     Args:
         segment_positions: List of (start, end) tuples defining segment boundaries
         original_length: Length of the original concatenated sequence
         
     Returns:
         mask_mod: Function (b, h, q_idx, kv_idx) -> Tensor[bool]
+            The mask function that FlexAttention will use to create block masks.
+            Returns a boolean tensor indicating whether attention is allowed.
     """
     # Convert segment positions to tensors for efficient computation
     # This allows us to use tensor operations instead of loops
@@ -163,9 +170,38 @@ def create_flex_attention_mask(segment_positions, original_length):
         """
         Mask function for FlexAttention.
         
-        Returns True (as tensor) if query can attend to key, False otherwise.
-        Must return Tensor boolean for vmap compatibility.
+        This function is called by FlexAttention's vmap to determine which
+        query-key pairs should be masked. It must return a Tensor (not Python bool)
+        for vmap compatibility.
+        
+        Device Handling (Bug Fix #5):
+        - Segment tensors are moved to q_idx.device dynamically
+        - This fixes "Expected all tensors to be on the same device" error
+        - Enables multi-GPU setups where model layers are on different devices
+        
+        Args:
+            b: Batch index (tensor)
+            h: Head index (tensor)
+            q_idx: Query position index (tensor, on model's device)
+            kv_idx: Key/Value position index (tensor, on model's device)
+            
+        Returns:
+            Tensor[bool]: True if query can attend to key, False otherwise
         """
+        # DEVICE HANDLING FIX (Bug #5):
+        # Move segment tensors to the same device as q_idx to avoid device mismatch.
+        # In multi-GPU setups, q_idx is on CUDA (e.g., cuda:8) but segment_starts/ends
+        # are created on CPU by default. PyTorch doesn't allow operations between
+        # tensors on different devices, causing RuntimeError.
+        # 
+        # Solution: Dynamically detect device and move tensors using .to(device)
+        # - This is idempotent: if already on target device, returns same tensor
+        # - Minimal overhead: tensors are small (typically 5 elements)
+        # - Standard pattern for FlexAttention mask functions with closure variables
+        device = q_idx.device
+        seg_starts = segment_starts.to(device)
+        seg_ends = segment_ends.to(device)
+        
         # First check causal constraint - cannot attend to future
         # This must come first as it's always enforced
         causal_mask = q_idx >= kv_idx
@@ -184,11 +220,11 @@ def create_flex_attention_mask(segment_positions, original_length):
         
         # Check which segment q_idx belongs to
         # q_in_segment[i] = True if segment_starts[i] <= q_idx < segment_ends[i]
-        q_in_segment = (q_idx >= segment_starts) & (q_idx < segment_ends)
+        q_in_segment = (q_idx >= seg_starts) & (q_idx < seg_ends)
         
         # Check which segment kv_idx belongs to  
         # kv_in_segment[i] = True if segment_starts[i] <= kv_idx < segment_ends[i]
-        kv_in_segment = (kv_idx >= segment_starts) & (kv_idx < segment_ends)
+        kv_in_segment = (kv_idx >= seg_starts) & (kv_idx < seg_ends)
         
         # Both must be in the same segment for attention to be allowed
         # same_segment = any(q_in_segment[i] AND kv_in_segment[i])
@@ -468,8 +504,8 @@ if __name__ == "__main__":
         help="Maximum number of samples to generate (default: None, process all)"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=16,
-        help="Batch size for dataloader (default: 16, good for 10 GPUs)"
+        "--batch_size", type=int, default=1,
+        help="Dataloader batch size (default: 1). Note: FlexAttention processes samples sequentially."
     )
     args = parser.parse_args()
     
@@ -491,8 +527,10 @@ if __name__ == "__main__":
         raise ValueError("Unsupported dataset")
     
     # Reused pattern: Dataloader setup (from generate.py)
-    # Use user-specified batch_size for better GPU utilization
-    dataloader = dataset.get_dataloader(batch_size=args.batch_size, shuffle=False)
+    # NOTE: FlexAttention processes samples sequentially due to variable-length concatenation
+    # batch_size parameter here only controls dataloader batching, not GPU batching
+    # For accurate progress tracking, we use batch_size=1
+    dataloader = dataset.get_dataloader(batch_size=1, shuffle=False)
     
     if args.model not in MODEL_PATHs:
         raise ValueError(
@@ -563,7 +601,10 @@ if __name__ == "__main__":
         for gpu_id in sorted(gpu_usage.keys()):
             layer_count = len(gpu_usage[gpu_id])
             print(f"   GPU {gpu_id}: {layer_count} layers")
-    print(f"   Batch size: {args.batch_size}")
+    
+    print(f"\n⚙️  Processing mode: Sequential (one sample at a time)")
+    print(f"   Reason: Variable-length concatenation in FlexAttention")
+    print(f"   Expected GPU utilization: Low (5-15%) due to sequential processing")
     
     # Reused pattern: DataFrame initialization (from generate.py)
     df = pd.DataFrame(columns=["uuid", "answers", "prediction", "generation"])

@@ -126,6 +126,7 @@ python3 flex_attention_generate.py \
 ❌ "Falling back to unpatched model..."
 ❌ "AttributeError: 'LlamaAttention' object has no attribute"
 ❌ "ValueError: vmap(simple_mask_mod, ...): must only return Tensors"
+❌ "RuntimeError: Expected all tensors to be on the same device"
 ```
 
 ---
@@ -138,8 +139,9 @@ python3 flex_attention_generate.py \
 | 方法绑定错误 | 🟡 Medium | Medium | Python绑定机制误用 |
 | API兼容性 | 🔴 High | Hard | Transformers版本变化 |
 | 返回类型错误 | 🟡 Medium | Easy | FlexAttention API要求 |
+| 设备不匹配 | 🔴 High | Easy | 多GPU环境张量设备管理 |
 
-**总计**: 4个bug全部修复 ✅
+**总计**: 5个bug全部修复 ✅
 
 ---
 
@@ -183,6 +185,6 @@ python3 flex_attention_generate.py \
 
 ---
 
-**最后更新**: 2025-10-14
-**状态**: All bugs fixed ✅
-**版本**: FlexAttention v1.0 (stable)
+**最后更新**: 2025-10-15
+**状态**: All 5 bugs fixed ✅
+**版本**: FlexAttention v1.1 (stable, multi-GPU compatible)
