@@ -60,11 +60,13 @@ FlexAttention ensemble is a new method that:
 
 ### Comparison with Existing Methods
 
-| Method | Fusion | Efficiency | Forward Passes |
-|--------|--------|------------|----------------|
-| per_prompt | None | Baseline | 5× per step |
-| avg/max | Logit-level | 5× cost | 5× per step |
-| **flex_attention** | **Attention-level** | **Most efficient** | **1× per step** |
+| Method | Fusion | Efficiency | Forward Passes | Description |
+|--------|--------|------------|----------------|-------------|
+| **Baseline 1 (origin)** | None | Fastest | 1× per step | Original question only (attention mode baseline) |
+| **Baseline 2 (per_prompt)** | None | Standard | N× per step | Each paraphrase separately (second baseline) |
+| avg/max | Logit-level | Standard | N× per step | Logit-level ensemble fusion |
+| weighted_* | Logit + confidence | Standard | N× per step | Weighted logit-level fusion |
+| **flex_attention** | **Attention-level** | **Most efficient** | **1× per step** | **Attention-level fusion (most efficient)** |
 
 ## 🔧 Setup
 
@@ -112,10 +114,41 @@ For detailed setup instructions, see **[docs/QUICKSTART.md](docs/QUICKSTART.md)*
 
 ## 📖 Usage
 
-### Basic Generation
+### Baseline Generation
 
 ```bash
-# FlexAttention with 5 paraphrases
+# Baseline 1: Original questions only (attention mode baseline)
+python3 baseline_generate.py \
+    --method origin \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# Baseline 2: Each paraphrase separately (second baseline for attention mode)
+python3 baseline_generate.py \
+    --method per_prompt \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# Generate both baselines
+python3 baseline_generate.py \
+    --method all \
+    --dataset webqa \
+    --model llama3.2_3b_it
+```
+
+For detailed baseline usage, see **[BASELINE_USAGE.md](BASELINE_USAGE.md)**.
+
+### Ensemble Generation
+
+```bash
+# Ensemble methods: max, avg, weighted_avg, weighted_max
+python3 generate.py \
+    --method max \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_ensemble 6
+
+# FlexAttention with 5 paraphrases (most efficient)
 python3 flex_attention_generate.py \
     --dataset webqa \
     --model llama3.2_3b_it \
@@ -132,6 +165,12 @@ python3 flex_attention_generate.py \
 ### Analysis
 
 ```bash
+# Analyze baseline results
+python3 analysis/analyze_baseline.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --compare
+
 # Analyze FlexAttention results
 python3 analysis/analyze_flexattention.py \
     --dataset webqa \
@@ -235,6 +274,7 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 
 ```
 .
+├── baseline_generate.py           # NEW: Baseline generation script
 ├── flex_attention_generate.py    # FlexAttention implementation
 ├── generate.py                    # Original ensemble methods
 ├── dataset.py                     # Dataset loading
@@ -250,7 +290,8 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 │   └── download_resources.sh          # Resource downloader
 │
 ├── analysis/                      # Analysis tools
-│   ├── analyze_flexattention.py   # Command-line analysis
+│   ├── analyze_baseline.py        # NEW: Baseline analysis
+│   ├── analyze_flexattention.py   # FlexAttention analysis
 │   ├── flexattention_analysis.ipynb   # Interactive analysis notebook
 │   └── [other analysis notebooks]
 │
@@ -260,11 +301,13 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 │   ├── DELEGATE_PROMPT.md         # Complete debugging guide
 │   ├── README_FLEXATTENTION.md    # FlexAttention overview
 │   ├── QUICK_REFERENCE.md         # API reference
+│   ├── IMPROVEMENTS.md            # NEW: Consolidated improvements
 │   ├── FLEX_ATTENTION_IMPLEMENTATION.md  # Technical details
 │   └── ARCHITECTURE.md            # Architecture diagrams
 │
-├── FLEXATTENTION_USAGE.md         # Usage guide for new features
-├── IMPROVEMENTS_SUMMARY.md        # Recent improvements summary
+├── BASELINE_USAGE.md              # NEW: Baseline generation guide
+├── FLEXATTENTION_USAGE.md         # FlexAttention usage guide
+├── CHANGELOG.md                   # All changes and updates
 │
 └── test/                          # Test notebooks
     ├── test_generate.ipynb
@@ -326,10 +369,12 @@ For more solutions, see **[docs/DELEGATE_PROMPT.md#troubleshooting](docs/DELEGAT
 ## 📝 Documentation Index
 
 **Getting Started:**
+- [BASELINE_USAGE.md](BASELINE_USAGE.md) - **NEW**: Baseline generation guide
 - [docs/QUICKSTART.md](docs/QUICKSTART.md) - 5-minute setup
 - [docs/DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md) - Complete guide
 
 **Understanding FlexAttention:**
+- [FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md) - Usage guide
 - [docs/README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md) - Overview
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Visual diagrams
 - [docs/FLEX_ATTENTION_IMPLEMENTATION.md](docs/FLEX_ATTENTION_IMPLEMENTATION.md) - Technical details
@@ -338,10 +383,9 @@ For more solutions, see **[docs/DELEGATE_PROMPT.md#troubleshooting](docs/DELEGAT
 - [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) - Quick reference
 - [docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md) - Code breakdown
 
-**Debugging & Development:**
-- [CHANGELOG.md](CHANGELOG.md) - Change history and updates
-- [CHANGELOG_FLEXATTENTION_DEBUG.md](CHANGELOG_FLEXATTENTION_DEBUG.md) - Detailed debug log
-- [FLEXATTENTION_FIX_SUMMARY.md](FLEXATTENTION_FIX_SUMMARY.md) - Recent fix summary
+**Development & Changes:**
+- [CHANGELOG.md](CHANGELOG.md) - All changes and updates
+- [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md) - **NEW**: Consolidated improvements
 
 **中文文档:**
 - [docs/实现总结.md](docs/实现总结.md) - 中文总结

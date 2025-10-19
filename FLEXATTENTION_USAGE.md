@@ -1,6 +1,108 @@
 # FlexAttention Generation and Analysis Guide
 
-This guide covers the new features for FlexAttention-based ensemble generation, including limiting sample generation and analyzing results.
+This guide covers the features for FlexAttention-based ensemble generation and traditional ensemble methods, including limiting sample generation and analyzing results.
+
+## Generation Methods Overview
+
+### Available Methods
+
+| Method | Description | Output File | Usage |
+|--------|-------------|-------------|-------|
+| **origin** | Baseline using only original questions (no paraphrases) | `origin.feather` | `generate.py --method origin` |
+| **per_prompt** | Generate with each paraphrase separately | `per_prompt.feather` | `generate.py --method per_prompt` |
+| **avg** | Logit-level fusion with averaging | `ensemble_avg-N.feather` | `generate.py --method avg` |
+| **max** | Logit-level fusion with max pooling | `ensemble_max-N.feather` | `generate.py --method max` |
+| **weighted_avg** | Weighted averaging based on confidence | `ensemble_weighted_avg-N.feather` | `generate.py --method weighted_avg` |
+| **weighted_max** | Weighted max based on confidence | `ensemble_weighted_max-N.feather` | `generate.py --method weighted_max` |
+| **flex_attention** | Attention-level fusion (most efficient) | `flex_attention-N.feather` | `flex_attention_generate.py` |
+
+### Method Comparison
+
+| Method | Fusion Level | Efficiency | Forward Passes | Paraphrases Used |
+|--------|--------------|------------|----------------|------------------|
+| origin | None | Fastest | 1× per step | 0 (original only) |
+| per_prompt | None | Baseline | N× per step | All separately |
+| avg/max | Logit | N× cost | N× per step | All (logit fusion) |
+| weighted_* | Logit + confidence | N× cost | N× per step | All (weighted fusion) |
+| **flex_attention** | **Attention** | **Most efficient** | **1× per step** | **All (attention fusion)** |
+
+## Usage Examples
+
+### 1. Baseline Generation (Original Questions Only)
+
+Generate results using only the original questions without any paraphrases:
+
+```bash
+# Generate baseline results
+python generate.py \
+    --method origin \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# Output: /path/to/datasets/webqa/llama3.2_3b_it/origin.feather
+```
+
+**When to use:**
+- Establish baseline performance
+- Compare impact of paraphrases
+- Quick single-pass generation
+
+### 2. Per-Prompt Generation
+
+Generate with each paraphrase separately (no ensemble):
+
+```bash
+python generate.py \
+    --method per_prompt \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# Output: /path/to/datasets/webqa/llama3.2_3b_it/per_prompt.feather
+```
+
+### 3. Traditional Ensemble Methods
+
+```bash
+# Average ensemble
+python generate.py \
+    --method avg \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_ensemble 6
+
+# Max ensemble
+python generate.py \
+    --method max \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_ensemble 6
+
+# Weighted methods (requires confidence.feather)
+python generate.py \
+    --method weighted_avg \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_ensemble 6
+```
+
+### 4. FlexAttention Generation
+
+Most efficient method with attention-level fusion:
+
+```bash
+# FlexAttention with 5 paraphrases
+python flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_paraphrases 5
+
+# Quick testing with limited samples
+python flex_attention_generate.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_paraphrases 5 \
+    --max_samples 100
+```
 
 ## New Features
 

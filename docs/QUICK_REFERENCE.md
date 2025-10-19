@@ -2,11 +2,35 @@
 
 ## What Was Implemented
 
-A new generation method `flex_attention_generate.py` that:
+### FlexAttention Method (`flex_attention_generate.py`)
+A new generation method that:
 1. **Concatenates** 5 paraphrases into a single prompt with position tracking
 2. **Isolates** each paraphrase during encoding using FlexAttention masks
 3. **Fuses** information from all paraphrases during generation
 4. **Reuses** 54% of code from the existing `generate.py`
+
+### Origin Baseline Method (NEW in `generate.py`)
+Added a new `--method origin` option that:
+1. Generates answers using **only original questions** (no paraphrases)
+2. Provides true baseline performance for comparison
+3. Automatically includes lemmatization for accuracy computation
+4. Output file: `origin.feather`
+
+**Usage:**
+```bash
+python generate.py --method origin --dataset webqa --model llama3.2_3b_it
+```
+
+### All Available Methods in `generate.py`
+
+| Method | Description | Paraphrases Used |
+|--------|-------------|------------------|
+| `origin` | Original questions only (baseline) | 0 |
+| `per_prompt` | Each paraphrase separately | All (no fusion) |
+| `avg` | Logit-level averaging | All |
+| `max` | Logit-level max pooling | All |
+| `weighted_avg` | Confidence-weighted averaging | All |
+| `weighted_max` | Confidence-weighted max | All |
 
 ## What's Reused from generate.py
 
