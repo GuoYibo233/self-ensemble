@@ -4,8 +4,187 @@
 
 ---
 
-## Latest Update - Performance Documentation and Batch Size Fix 📊
-**更新时间 / Update Time**: 2025-10-15 (最新)
+## Latest Update - Unified Model Paths and Dataset Paths 🔧
+**更新时间 / Update Time**: 2025-10-20 (最新)
+**提交信息 / Commit**: Unify all model and dataset paths to user's own directories
+
+### 🎯 统一所有模型和数据集路径 / Unify All Model and Dataset Paths
+
+将所有硬编码的路径从原作者（xzhao）的目录改为当前用户（y-guo）的目录，并统一使用HuggingFace Hub集中缓存管理模型。
+
+#### 改动清单 / Change List
+
+1. **✅ 统一模型路径为HuggingFace Hub IDs**
+   - 位置: `constants.py` 第4-24行
+   - 设置`HF_HOME`为`/net/tokyo100-10g/data/str01_01/y-guo/huggingface_cache`
+   - 所有LLaMA模型从本地路径改为Hub ID格式
+     - 例如: `/net/.../llama3.2_3b_it` → `meta-llama/Llama-3.2-3B-Instruct`
+   - Qwen模型保持Hub ID格式不变
+   - 设置环境变量：`HF_HOME`, `HUGGINGFACE_HUB_CACHE`, `TRANSFORMERS_CACHE`
+
+2. **✅ 更新数据集根目录**
+   - 位置: `dataset.py` 第17行
+   - 修改前: `/home/xzhao/workspace/self-ensemble/datasets`
+   - 修改后: `/net/tokyo100-10g/data/str01_01/y-guo/datasets`
+
+3. **✅ 更新.env文件PYTHONPATH**
+   - 位置: `.env` 第1行
+   - 修改前: `/home/xzhao/workspace/self-ensemble`
+   - 修改后: `/home/y-guo/self-ensemble/self-ensemble`
+
+4. **✅ 更新测试notebook中的路径**
+   - `test/test_generate.ipynb`: 更新root路径
+   - `test/test_confidence.ipynb`: 更新root路径
+   - 所有路径统一使用`/net/tokyo100-10g/data/str01_01/y-guo/datasets`
+
+#### 技术说明 / Technical Notes
+
+**HuggingFace Hub集中缓存 / HuggingFace Hub Centralized Cache**:
+- 所有模型自动下载到`/net/tokyo100-10g/data/str01_01/y-guo/huggingface_cache/hub/`
+- 首次使用时自动下载，后续复用缓存
+- 不需要软链接或手动下载
+- 统一管理，易于维护
+
+**数据集路径结构 / Dataset Path Structure**:
+```
+/net/tokyo100-10g/data/str01_01/y-guo/datasets/
+├── webqa/
+│   └── {model_name}/
+│       ├── origin.feather
+│       ├── per_prompt.feather
+│       ├── ensemble_*.feather
+│       └── flex_attention-*.feather
+└── myriadlama/
+    └── {model_name}/
+        └── ...
+```
+
+**环境变量配置 / Environment Variables**:
+```python
+HF_HOME = "/net/tokyo100-10g/data/str01_01/y-guo/huggingface_cache"
+os.environ["HF_HOME"] = HF_HOME
+os.environ["HUGGINGFACE_HUB_CACHE"] = HF_HOME
+os.environ["TRANSFORMERS_CACHE"] = HF_HOME
+```
+
+#### 影响 / Impact
+
+**优势 / Benefits**:
+- ✅ 完全独立的工作环境
+- ✅ 自动模型下载和缓存
+- ✅ 统一的目录结构
+- ✅ 易于维护和管理
+
+**注意事项 / Notes**:
+- 首次运行需要HuggingFace登录：`hf auth login`
+- LLaMA模型需要先在HuggingFace网站接受许可协议
+- 首次下载模型需要时间（3B模型约15-30分钟）
+
+---
+
+## Previous Update - Add Origin Baseline Method 🎯
+**更新时间 / Update Time**: 2025-10-20
+**提交信息 / Commit**: Add origin baseline method to generate.py for comparison
+
+### 🎯 添加原始问题基线方法 / Add Origin Baseline Method
+
+为了更好地评估paraphrase和ensemble方法的效果，在`generate.py`中新增了`origin`方法，用于生成只使用原始问题（不使用任何paraphrase）的baseline结果。
+
+#### 新增功能 / New Features
+
+**新方法: `--method origin`**
+- 只使用数据集中的原始问题（paraphrase0）
+- 不使用任何paraphrase变体
+- 提供真正的baseline性能用于对比
+- 自动进行lemmatization以便计算准确率
+
+#### 改动清单 / Change List
+
+1. **✅ 在generate.py中添加origin方法**
+   - 位置: `generate.py` 第147行
+   - 修改choices参数，添加`"origin"`选项
+   - 新增origin方法处理逻辑（第172-209行）
+
+2. **✅ 实现origin方法生成流程**
+   - 只使用`all_paraphrases[0]`（原始问题）
+   - 构造few-shot prompt
+   - 单次生成（每个样本一次forward pass）
+   - 自动lemmatization
+   - 输出到`{dataset_root}/origin.feather`
+
+3. **✅ 更新README.md方法对比表格**
+   - 位置: `README.md` 第63-67行
+   - 添加origin方法说明
+   - 更新表格展示所有可用方法
+
+4. **✅ 更新README.md使用示例**
+   - 位置: `README.md` 第120-128行
+   - 添加origin方法使用示例
+   - 展示完整的方法调用流程
+
+5. **✅ 更新FLEXATTENTION_USAGE.md**
+   - 位置: `FLEXATTENTION_USAGE.md` 第1-65行
+   - 添加方法概览表格
+   - 添加详细的使用示例
+   - 说明各方法的适用场景
+
+6. **✅ 更新docs/QUICK_REFERENCE.md**
+   - 位置: `docs/QUICK_REFERENCE.md` 第3-31行
+   - 添加origin方法说明
+   - 添加所有可用方法对比表格
+
+#### 使用方法 / Usage
+
+```bash
+# 生成baseline结果（只用原始问题）
+python generate.py \
+    --method origin \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# 输出文件
+# /net/tokyo100-10g/data/str01_01/y-guo/datasets/webqa/llama3.2_3b_it/origin.feather
+```
+
+#### 输出格式 / Output Format
+
+`origin.feather` 包含以下列：
+- `uuid`: 问题的唯一标识符
+- `answers`: 正确答案列表
+- `question`: 原始问题文本
+- `prompt`: 完整的输入prompt（包含few-shot examples）
+- `prediction`: 模型预测的答案
+- `generation`: 模型生成的完整文本
+- `predict_lemma`: 预测答案的lemma形式
+- `answer_lemmas`: 正确答案的lemma形式列表
+
+#### 方法对比 / Method Comparison
+
+| Method | Description | Forward Passes | Paraphrases |
+|--------|-------------|----------------|-------------|
+| **origin** | 只用原始问题（真baseline） | 1× per sample | 0 |
+| per_prompt | 每个paraphrase单独生成 | 6× per sample | All (no fusion) |
+| avg/max | Logit层融合 | 6× per sample | All (logit fusion) |
+| weighted_* | 基于置信度的融合 | 6× per sample | All (weighted) |
+| flex_attention | Attention层融合（最高效） | 1× per sample | All (attention fusion) |
+
+#### 技术说明 / Technical Notes
+
+**为什么需要origin方法 / Why Origin Method**:
+1. **真正的baseline**: per_prompt使用所有paraphrase但不融合，不是真baseline
+2. **公平对比**: 评估paraphrase的贡献
+3. **性能参考**: 与ensemble方法对比，量化改进幅度
+
+**实现细节 / Implementation Details**:
+- 复用`single_generation()`函数
+- 使用与其他方法相同的few-shot context
+- 自动进行lemmatization以便与其他方法对比
+- 输出格式与其他方法一致
+
+---
+
+## Previous Update - Performance Documentation and Batch Size Fix 📊
+**更新时间 / Update Time**: 2025-10-15
 **提交信息 / Commit**: Fix progress bar and clarify GPU utilization expectations
 
 ### 🎯 修复进度条显示和GPU利用率说明 / Fix Progress Bar and GPU Utilization Documentation

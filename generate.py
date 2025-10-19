@@ -144,7 +144,7 @@ def ensemble_generation(prompt_sets, integration_method="max", weights=None):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Ensemble generation")
-    parser.add_argument("--method", type=str, default="per_prompt", choices=["per_prompt", "max", "avg", "weighted_avg", "weighted_max"],
+    parser.add_argument("--method", type=str, default="per_prompt", choices=["origin", "per_prompt", "max", "avg", "weighted_avg", "weighted_max"],
                         help="Integration method for ensemble generation")
     parser.add_argument("--model", type=str, default="llama3.2_3b_it", help="Path to the pre-trained model.")
     parser.add_argument("--dataset", type=str, required=True, choices=["webqa", "myriadlama"], help="Dataset to use for generating paraphrases.")    
@@ -169,6 +169,47 @@ if __name__ == "__main__":
         raise ValueError(f"Model {args.model} is not supported. Please choose from {list(MODEL_PATHs.keys())}.")
     
     model_path = MODEL_PATHs.get(args.model, args.model)
+    
+    if args.method == "origin":
+        dump_file = f"{dataset.dataset_root}/origin.feather"
+        if os.path.exists(dump_file):
+            print(f"File {dump_file} already exists, skipping generation.")
+            exit(0)
+
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForCausalLM.from_pretrained(model_path, device_map=args.device, torch_dtype="auto")
+        tokenizer.pad_token = tokenizer.eos_token
+
+        df = pd.DataFrame(columns=["uuid", "answers", "question", "prompt", "prediction", "generation"])
+        few_shot_context = dataset.get_few_shot_examples()
+        
+        for uuids, answers, all_paraphrases in tqdm(dataloader):
+            # Use only the original questions (paraphrase0)
+            original_questions = all_paraphrases[0]
+            prompts = dataset.construct_prompts(few_shot_context, original_questions)
+            generations = single_generation(prompts)
+            predictions = [gen.strip().split('\n')[0] for gen in generations]
+            
+            items = {
+                "uuid": uuids,
+                "answers": answers,
+                "question": original_questions,
+                "prompt": prompts,
+                "prediction": predictions,
+                "generation": generations,
+            }
+            df = pd.concat([df, pd.DataFrame(items)], ignore_index=True)
+        
+        # Lemmaize predictions and answers
+        chunks = np.array_split(df, num_parts)
+        with mp.get_context("spawn").Pool(num_parts, initializer=init_spacy) as pool:
+            results = pool.map(lemmaize_chunk, chunks)
+        df = append_lemmas(df, results)
+        
+        df.to_feather(dump_file)
+        print(f"Baseline results saved to {dump_file}")
+        exit(0)
+    
     if args.method == "per_prompt":
         dump_file = f"{dataset.dataset_root}/per_prompt.feather"
         if os.path.exists(dump_file):

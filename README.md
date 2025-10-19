@@ -62,7 +62,8 @@ FlexAttention ensemble is a new method that:
 
 | Method | Fusion | Efficiency | Forward Passes |
 |--------|--------|------------|----------------|
-| per_prompt | None | Baseline | 5× per step |
+| origin | None (original question only) | Baseline | 1× per step |
+| per_prompt | None (each paraphrase) | 5× baseline | 5× per step |
 | avg/max | Logit-level | 5× cost | 5× per step |
 | **flex_attention** | **Attention-level** | **Most efficient** | **1× per step** |
 
@@ -115,6 +116,25 @@ For detailed setup instructions, see **[docs/QUICKSTART.md](docs/QUICKSTART.md)*
 ### Basic Generation
 
 ```bash
+# Baseline: Original questions only (no paraphrase)
+python3 generate.py \
+    --method origin \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# Per-prompt: Generate with each paraphrase separately
+python3 generate.py \
+    --method per_prompt \
+    --dataset webqa \
+    --model llama3.2_3b_it
+
+# Ensemble methods: max, avg, weighted_avg, weighted_max
+python3 generate.py \
+    --method max \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_ensemble 6
+
 # FlexAttention with 5 paraphrases
 python3 flex_attention_generate.py \
     --dataset webqa \
