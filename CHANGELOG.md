@@ -1,11 +1,121 @@
-# Changelog - Mask Matrix and FlexAttention Improvements
+# Changelog - Self-Ensemble Implementation
 
-本文档记录每次提交的详细变更内容 / This document tracks detailed changes for each commit
+本文档记录所有重要变更和更新 / This document tracks all significant changes and updates
 
 ---
 
-## Latest Update - Unified Model Paths and Dataset Paths 🔧
+## Latest Update - Baseline Generation and Documentation Consolidation 🎯
 **更新时间 / Update Time**: 2025-10-20 (最新)
+**提交信息 / Commit**: Add baseline generation scripts and consolidate documentation
+
+### 🎯 新增Baseline生成功能 / Added Baseline Generation
+
+创建专门的baseline生成脚本，提供两种baseline实验模式。
+
+#### 新增文件 / New Files
+
+1. **baseline_generate.py** - 专用baseline生成脚本
+   - Baseline 1 (origin): 只使用原始问题（attention模式的baseline）
+   - Baseline 2 (per_prompt): 每个paraphrase单独生成（attention模式的第二个baseline）
+   - 支持单独或同时生成两种baseline
+   - 自动进行lemmatization
+   - 输出格式与原有方法保持一致
+
+2. **analysis/analyze_baseline.py** - Baseline结果分析脚本
+   - 分析两种baseline的准确率
+   - 与ensemble方法对比
+   - 显示改进百分比
+   - 展示样本生成结果
+
+3. **BASELINE_USAGE.md** - Baseline使用指南
+   - 详细的使用说明
+   - 与其他方法的对比
+   - 完整的实验工作流程
+   - 故障排除指南
+
+#### 使用方法 / Usage
+
+```bash
+# 生成Baseline 1（只使用原始问题）
+python baseline_generate.py --method origin --dataset webqa --model llama3.2_3b_it
+
+# 生成Baseline 2（每个paraphrase单独生成）
+python baseline_generate.py --method per_prompt --dataset webqa --model llama3.2_3b_it
+
+# 同时生成两种baseline
+python baseline_generate.py --method all --dataset webqa --model llama3.2_3b_it
+
+# 分析baseline结果
+python analysis/analyze_baseline.py --dataset webqa --model llama3.2_3b_it --compare
+```
+
+#### 输出文件 / Output Files
+
+- `datasets/{dataset}/{model}/baseline_origin.feather` - Baseline 1结果
+- `datasets/{dataset}/{model}/baseline_per_prompt.feather` - Baseline 2结果
+
+### 📚 文档整合 / Documentation Consolidation
+
+整合和简化文档结构，减少重复内容，提高可维护性。
+
+#### 新增/更新文档 / New/Updated Documentation
+
+1. **BASELINE_USAGE.md** - 新增：Baseline生成完整指南
+2. **docs/IMPROVEMENTS.md** - 新增：整合所有改进内容
+3. **DOCUMENTATION_CONSOLIDATION.md** - 文档整合计划
+4. **README.md** - 更新：添加baseline部分，更新文档链接
+5. **CHANGELOG.md** (本文件) - 更新：添加baseline和文档整合内容
+
+#### 整合的内容 / Consolidated Content
+
+以下内容已整合到新文档中：
+- **IMPROVEMENTS_SUMMARY.md** → docs/IMPROVEMENTS.md
+- **BEFORE_AFTER_COMPARISON.md** → docs/IMPROVEMENTS.md
+- **CHANGES_README.md** → docs/IMPROVEMENTS.md
+- **IMPLEMENTATION_SUMMARY.md** → CHANGELOG.md
+- **RECENT_UPDATES.md** → CHANGELOG.md
+
+#### 文档结构简化 / Simplified Structure
+
+**根目录文档 (4个核心文档)**:
+- README.md - 项目主文档
+- CHANGELOG.md - 所有变更记录
+- BASELINE_USAGE.md - Baseline生成指南
+- FLEXATTENTION_USAGE.md - FlexAttention使用指南
+
+**docs/目录 (技术文档)**:
+- QUICKSTART.md, DELEGATE_PROMPT.md, LINUX_SETUP.md
+- README_FLEXATTENTION.md, FLEX_ATTENTION_IMPLEMENTATION.md
+- ARCHITECTURE.md, QUICK_REFERENCE.md
+- IMPROVEMENTS.md - 新增：整合的改进文档
+- 等等...
+
+### 🎯 Baseline实验设计 / Baseline Experiment Design
+
+#### Baseline 1: Origin (原始问题)
+- **目的**: Attention模式的基准
+- **方法**: 只使用原始问题，不使用任何paraphrase
+- **用途**: 评估paraphrase和ensemble的整体效果
+
+#### Baseline 2: Per-Prompt (独立paraphrase)
+- **目的**: Attention模式的第二个基准
+- **方法**: 每个paraphrase单独生成，不进行ensemble
+- **用途**: 当使用自动生成的prompt时的对照组
+
+#### 与Ensemble方法的关系
+
+| 方法 | Baseline | 效率 | 前向传播次数 | 融合层级 |
+|------|----------|------|-------------|---------|
+| **Baseline 1 (origin)** | ✅ 是 | 最快 | 1× | 无 |
+| **Baseline 2 (per_prompt)** | ✅ 是 | 标准 | N× | 无 |
+| avg/max ensemble | 否 | 标准 | N× | Logit层 |
+| weighted_* ensemble | 否 | 标准 | N× | Logit+置信度 |
+| **flex_attention** | 否 | **最高效** | **1×** | **Attention层** |
+
+---
+
+## Previous Update - Unified Model Paths and Dataset Paths 🔧
+**更新时间 / Update Time**: 2025-10-20
 **提交信息 / Commit**: Unify all model and dataset paths to user's own directories
 
 ### 🎯 统一所有模型和数据集路径 / Unify All Model and Dataset Paths
