@@ -120,12 +120,24 @@ def prepare_detailed_table(df, method):
             if predict_lemma is not None and answer_lemmas is not None:
                 if not (isinstance(predict_lemma, float) and pd.isna(predict_lemma)):
                     if not (isinstance(answer_lemmas, float) and pd.isna(answer_lemmas)):
-                        if isinstance(answer_lemmas, list):
-                            # Convert to proper format if needed
-                            answer_lemmas = [list(x) if not isinstance(x, list) else x for x in answer_lemmas]
-                            is_correct = partial_match(predict_lemma, answer_lemmas)
-                            item["Is_Correct"] = "✓" if is_correct else "✗"
-                        else:
+                        # Try to match
+                        try:
+                            # Handle numpy array conversion
+                            if hasattr(answer_lemmas, '__iter__'):
+                                answer_lemmas_list = []
+                                for ans in answer_lemmas:
+                                    if isinstance(ans, (list, tuple)):
+                                        answer_lemmas_list.append(list(ans))
+                                    else:
+                                        # Handle numpy array or single item
+                                        answer_lemmas_list.append(list(ans) if hasattr(ans, '__iter__') and not isinstance(ans, str) else [ans])
+                                
+                                is_correct = partial_match(predict_lemma, answer_lemmas_list)
+                                item["Is_Correct"] = "✓" if is_correct else "✗"
+                            else:
+                                item["Is_Correct"] = "N/A"
+                        except Exception as e:
+                            # If matching fails, mark as N/A
                             item["Is_Correct"] = "N/A"
                     else:
                         item["Is_Correct"] = "N/A"
@@ -214,8 +226,13 @@ def display_summary_statistics(df, detailed_df, accuracy):
         if "Is_Correct" in detailed_df.columns:
             correct_count = (detailed_df["Is_Correct"] == "✓").sum()
             incorrect_count = (detailed_df["Is_Correct"] == "✗").sum()
-            print(f"Correct predictions: {correct_count}")
-            print(f"Incorrect predictions: {incorrect_count}")
+            na_count = (detailed_df["Is_Correct"] == "N/A").sum()
+            
+            if correct_count > 0 or incorrect_count > 0:
+                print(f"Correct predictions: {correct_count}")
+                print(f"Incorrect predictions: {incorrect_count}")
+                if na_count > 0:
+                    print(f"Could not determine: {na_count}")
     
     print("\n" + "="*70)
 
@@ -263,8 +280,7 @@ Examples:
     )
     parser.add_argument(
         "--dataset", type=str, required=True,
-        choices=["webqa", "myriadlama"],
-        help="Dataset name"
+        help="Dataset name (e.g., webqa, myriadlama)"
     )
     parser.add_argument(
         "--model", type=str, required=True,
