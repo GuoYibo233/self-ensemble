@@ -56,6 +56,67 @@ python baseline_generate.py \
     --model llama3.2_3b_it
 ```
 
+**Output**: Both `baseline_origin.feather` and `baseline_per_prompt.feather`
+
+## 🚀 Batch Generation for All Models
+
+If you have multiple models and want to generate baselines for all of them at once:
+
+### Option 1: Quick Start (Recommended)
+
+```bash
+# Interactive launcher - will guide you through the process
+bash start_baseline_generation.sh
+```
+
+This will:
+1. Show you which models will be processed
+2. Ask for confirmation
+3. Start generation in a tmux session
+4. Allow you to detach and let it run in background
+
+### Option 2: Direct Execution
+
+```bash
+# Bash script (simpler, more stable)
+bash scripts/generate_all_baselines.sh
+
+# Python script (more features)
+python scripts/generate_all_baselines.py
+
+# Dry run to see what would be done
+bash scripts/generate_all_baselines.sh --dry-run
+python scripts/generate_all_baselines.py --dry-run
+```
+
+### Option 3: In tmux Manually
+
+```bash
+# Create tmux session
+tmux new -s baseline_gen
+
+# Run the script
+bash scripts/generate_all_baselines.sh
+
+# Detach: Ctrl+B then D
+# Reattach later: tmux attach -t baseline_gen
+```
+
+**See [QUICK_BASELINE_GUIDE.md](QUICK_BASELINE_GUIDE.md) for detailed instructions.**
+
+**See [scripts/README.md](scripts/README.md) for script documentation.**
+
+---
+
+## Single Model Generation
+
+```bash
+python baseline_generate.py \
+    --method all \
+    --dataset webqa \
+    --model llama3.2_3b_it
+```
+
 ## Analysis
 
 ### Analyze Baseline Results
@@ -70,7 +131,7 @@ python analysis/analyze_baseline.py \
 python analysis/analyze_baseline.py \
     --dataset webqa \
     --model llama3.2_3b_it \
-    --compare
+    --compare》
 ```
 
 ### Example Analysis Output
