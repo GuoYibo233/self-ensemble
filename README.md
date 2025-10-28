@@ -31,6 +31,13 @@ This repository implements self-ensemble methods for natural language generation
 - **`analysis/analyze_flexattention.py`** - Command-line analysis tool for FlexAttention results
 - **`analysis/flexattention_analysis.ipynb`** - Interactive Jupyter notebook for analysis and visualization
 
+### Visualization Tools
+
+- **`plot/flowchart_and_attention_mask_visualization.ipynb`** - Interactive notebook for visualizing code flowchart and attention masks
+- **`plot/demo_visualization.py`** - Standalone script to generate demo visualizations
+- **`plot/test_visualization.py`** - Test script to verify mask functions
+- **`plot/README.md`** - Detailed usage guide for visualization tools
+
 ### Documentation
 
 | Document | Description |
