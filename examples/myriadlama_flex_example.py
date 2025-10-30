@@ -40,9 +40,10 @@ print("\n" + "="*70)
 print("  Usage Examples")
 print("="*70)
 print("\nGenerate with manual cross-attention:")
-print("  python myriadlama_flex_attention_generate.py \\")
-print("    --model llama3.2_3b_it \\")
-print("    --allow_manual_cross_attention")
+command = """  python myriadlama_flex_attention_generate.py \\
+    --model llama3.2_3b_it \\
+    --allow_manual_cross_attention"""
+print(command)
 print("\nFor more details, see:")
 print("  - MYRIADLAMA_FLEX_USAGE.md")
 print("  - docs/MYRIADLAMA_FLEX_ATTENTION.md")
