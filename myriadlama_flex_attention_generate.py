@@ -95,13 +95,14 @@ def get_few_shot_examples_with_paraphrases(dataset, k=5, num_fs_paraphrases=3, s
     
     New format per user requirement:
     Each few-shot example has:
-    - Multiple paraphrase questions (e.g., 3 paraphrases)
+    - Multiple paraphrase questions (same count as main question paraphrases)
     - One answer (shared by all paraphrases)
     
     Args:
         dataset: MyriadLamaDataset instance
         k: Number of few-shot examples
-        num_fs_paraphrases: Number of paraphrase questions per few-shot
+        num_fs_paraphrases: Number of paraphrase questions per few-shot 
+                            (should match main question paraphrase count)
         seed: Random seed
         
     Returns:
@@ -847,11 +848,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--num_paraphrases", type=int, default=5,
-        help="Number of paraphrases to use for main question (default: 5)"
-    )
-    parser.add_argument(
-        "--num_fs_paraphrases", type=int, default=3,
-        help="Number of paraphrases per few-shot example (default: 3)"
+        help="Number of paraphrases to use (same for main question and few-shot examples, default: 5)"
     )
     parser.add_argument(
         "--max_samples", type=int, default=None,
@@ -934,10 +931,11 @@ if __name__ == "__main__":
         print(f"Processing maximum {args.max_samples} samples")
     
     # Get few-shot examples with multiple paraphrases (new format)
+    # Use same number of paraphrases for few-shot as for main question
     few_shot_examples = get_few_shot_examples_with_paraphrases(
         dataset, 
         k=5, 
-        num_fs_paraphrases=args.num_fs_paraphrases,
+        num_fs_paraphrases=args.num_paraphrases,
         seed=42
     )
     instruction = dataset.instruction
