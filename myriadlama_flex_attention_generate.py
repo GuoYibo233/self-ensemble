@@ -6,14 +6,15 @@ designed for the MyriadLAMA dataset, with custom prompt construction and mask lo
 
 Key differences from flex_attention_generate.py:
 - Custom prompt formatting for [MASK] token prediction
-- Modified mask logic to handle template-based prompts
+- Modified mask logic: each paraphrase/template is isolated during encoding
+- All paraphrases are manually generated (no distinction between manual/auto)
 - Optimized for MyriadLAMA's fill-in-the-blank task structure
-- Separates manual and auto-generated templates during concatenation
 
 Features:
-- Concatenates manual and auto paraphrases separately with tracking
-- Uses FlexAttention to isolate attention within template groups during encoding
-- Allows generated tokens to attend to all templates for fusion
+- Concatenates multiple paraphrases with position tracking
+- Uses FlexAttention to isolate attention within each paraphrase during encoding
+- Within each paraphrase, only causal attention (later tokens attend to earlier tokens)
+- Allows generated tokens to attend to all paraphrases for fusion
 - Specifically designed for one-word prediction tasks
 """
 
@@ -92,11 +93,12 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
     
     Modified for MyriadLAMA:
     - Uses simpler separator (just double newline) since templates are shorter
-    - Tracks manual vs auto template boundaries
+    - All paraphrases are manually generated (treated equally)
+    - Tracks position boundaries for each paraphrase
     - Optimized for fill-in-the-blank task structure
     
     Args:
-        prompts: List of prompt strings (template-based paraphrases)
+        prompts: List of prompt strings (paraphrases, all manually generated)
         tokenizer: HuggingFace tokenizer
         separator: Separator token between prompts (default: double newline)
         
@@ -140,21 +142,19 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
 # MODIFIED - MyriadLama-specific mask creation
 # ==============================================================================
 
-def create_myriadlama_mask(segment_positions, original_length, manual_count=None):
+def create_myriadlama_mask(segment_positions, original_length):
     """
     Create attention mask for MyriadLAMA template-based ensemble generation.
     
-    Modified mask logic for MyriadLAMA:
-    - Templates are organized as: [manual_templates, auto_templates]
-    - During encoding: Each template group attends within itself
-    - Optional: Allow cross-attention between manual templates (they're human-written)
+    Mask logic for MyriadLAMA:
+    - All templates/paraphrases are manually generated (no auto-generated templates)
+    - During encoding: Each template is isolated and can only attend to itself
+    - Within each template: Later tokens can attend to earlier tokens (causal)
     - During generation: New tokens attend to all templates for fusion
-    - Optimized for short, fill-in-the-blank style templates
     
     Args:
         segment_positions: List of (start, end) tuples defining template boundaries
         original_length: Length of the original concatenated sequence
-        manual_count: Number of manual templates (optional, for special handling)
         
     Returns:
         mask_mod: Function (b, h, q_idx, kv_idx) -> Tensor[bool]
@@ -164,24 +164,17 @@ def create_myriadlama_mask(segment_positions, original_length, manual_count=None
     # Convert segment positions to tensors
     segment_starts = torch.tensor([start for start, _ in segment_positions], dtype=torch.int64)
     segment_ends = torch.tensor([end for _, end in segment_positions], dtype=torch.int64)
-    num_segments = len(segment_positions)
-    
-    # If manual_count is provided, we can create template group boundaries
-    # Manual templates: [0, manual_count)
-    # Auto templates: [manual_count, num_segments)
-    if manual_count is None:
-        manual_count = 0  # No special handling for manual templates
     
     def mask_mod(b, h, q_idx, kv_idx):
         """
         Mask function for MyriadLAMA FlexAttention.
         
-        Modified logic:
-        1. Always enforce causal constraint
-        2. Generated tokens (>= original_length) attend to all
-        3. Within encoding phase:
-           - Each template attends to itself
-           - Optionally: manual templates can attend to each other
+        Logic:
+        1. Always enforce causal constraint (later tokens cannot attend to future tokens)
+        2. Generated tokens (>= original_length) attend to all previous tokens
+        3. Within encoding phase: Each template only attends to itself
+           - Tokens in template i can only attend to tokens in template i
+           - Within template i, only causal attention (later to earlier)
         """
         # Move segment tensors to same device as indices
         device = q_idx.device
@@ -195,27 +188,19 @@ def create_myriadlama_mask(segment_positions, original_length, manual_count=None
         is_generated = q_idx >= original_length
         
         # For original tokens, determine segment membership
+        # q_in_segment[i] = True if q_idx is in segment i
         q_in_segment = (q_idx >= seg_starts) & (q_idx < seg_ends)
+        # kv_in_segment[i] = True if kv_idx is in segment i
         kv_in_segment = (kv_idx >= seg_starts) & (kv_idx < seg_ends)
         
-        # Same segment check
+        # Both must be in the same segment for attention to be allowed
+        # This ensures each template is isolated during encoding
         same_segment = (q_in_segment & kv_in_segment).any()
-        
-        # MODIFIED: Allow manual templates to attend to each other
-        # This is beneficial for MyriadLAMA as manual templates are high-quality
-        # and can share information during encoding
-        if manual_count > 0:
-            # Check if both q and kv are in manual template region
-            q_in_manual = q_idx < seg_ends[min(manual_count - 1, num_segments - 1)]
-            kv_in_manual = kv_idx < seg_ends[min(manual_count - 1, num_segments - 1)]
-            within_manual_group = q_in_manual & kv_in_manual
-        else:
-            within_manual_group = torch.tensor(False, device=device)
         
         # Combine all constraints:
         # 1. Must satisfy causal constraint
-        # 2. Either: generated token OR same segment OR both in manual group
-        result = causal_mask & (is_generated | same_segment | within_manual_group)
+        # 2. Either: query is a generated token OR query and key are in same template
+        result = causal_mask & (is_generated | same_segment)
         
         return result
     
@@ -351,18 +336,18 @@ class FlexAttentionWrapper:
 # ==============================================================================
 
 @torch.no_grad()
-def myriadlama_flex_generation(prompts, manual_count=0, max_new_tokens=10):
+def myriadlama_flex_generation(prompts, max_new_tokens=10):
     """
     Generate text using FlexAttention for MyriadLAMA.
     
     Modified for MyriadLAMA:
     - Shorter max_new_tokens (10 instead of 20) for one-word answers
-    - Uses modified mask that allows manual template cross-attention
+    - All templates are treated equally (all are manually generated)
+    - Each template is isolated during encoding
     - Optimized for fill-in-the-blank task
     
     Args:
-        prompts: List of template-based prompts
-        manual_count: Number of manual templates (for special mask handling)
+        prompts: List of template-based prompts (all manually generated)
         max_new_tokens: Maximum tokens to generate (default: 10 for one-word answers)
         
     Returns:
@@ -395,11 +380,10 @@ def myriadlama_flex_generation(prompts, manual_count=0, max_new_tokens=10):
     for step in range(max_new_tokens):
         current_length = inputs["input_ids"].shape[1]
         
-        # Create mask with MyriadLAMA-specific logic
+        # Create mask for MyriadLAMA (all templates are isolated)
         mask_mod = create_myriadlama_mask(
             segment_positions, 
-            original_length,
-            manual_count=manual_count
+            original_length
         )
         
         # Patch model with FlexAttention
@@ -462,20 +446,12 @@ if __name__ == "__main__":
         help="Normalize predictions and answers to lemmas"
     )
     parser.add_argument(
-        "--num_manual", type=int, default=None,
-        help="Number of manual templates to use (default: all available)"
-    )
-    parser.add_argument(
-        "--num_auto", type=int, default=5,
-        help="Number of auto templates to use (default: 5)"
+        "--num_paraphrases", type=int, default=5,
+        help="Number of paraphrases to use (default: 5)"
     )
     parser.add_argument(
         "--max_samples", type=int, default=None,
         help="Maximum number of samples to generate (default: None, process all)"
-    )
-    parser.add_argument(
-        "--allow_manual_cross_attention", action="store_true",
-        help="Allow manual templates to attend to each other during encoding"
     )
     args = parser.parse_args()
     
@@ -505,16 +481,8 @@ if __name__ == "__main__":
     local_output_dir = f"/net/tokyo100-10g/data/str01_01/y-guo/datasets/myriadlama/{args.model}"
     os.makedirs(local_output_dir, exist_ok=True)
     
-    # Determine file name based on template configuration
-    if args.num_manual is not None:
-        template_config = f"m{args.num_manual}_a{args.num_auto}"
-    else:
-        template_config = f"all_a{args.num_auto}"
-    
-    if args.allow_manual_cross_attention:
-        template_config += "_xattn"
-    
-    dump_file = f"{local_output_dir}/myriadlama_flex_{template_config}.feather"
+    # Determine file name based on number of paraphrases
+    dump_file = f"{local_output_dir}/myriadlama_flex_{args.num_paraphrases}paras.feather"
     
     print(f"Output file: {dump_file}")
     
@@ -551,7 +519,7 @@ if __name__ == "__main__":
     print(f"🔍 Model: {args.model}")
     print(f"   PyTorch version: {torch.__version__}")
     print(f"   Using MyriadLAMA-specific FlexAttention")
-    print(f"   Template configuration: {template_config}")
+    print(f"   Using {args.num_paraphrases} paraphrases per question")
     if hasattr(model.config, 'num_attention_heads'):
         print(f"   Attention heads: {model.config.num_attention_heads}")
     
@@ -573,43 +541,10 @@ if __name__ == "__main__":
         
         # Process each question in batch
         for i, paraphrases in enumerate(zip(*all_paraphrases)):
-            # Separate manual and auto templates
-            # According to MyriadLamaDataset.collate_fn:
-            # - manual_paraphrases come first (variable count)
-            # - then 5 auto_paraphrases
-            
-            # Count manual templates (all templates before the last 5 auto ones)
-            manual_templates = []
-            auto_templates = []
-            
-            # The paraphrases tuple contains all templates for this question
-            # We need to separate them based on the original structure
-            # Since we don't have direct access here, we'll use a simple heuristic:
-            # - If num_manual is specified, use that
-            # - Otherwise, assume first templates are manual
-            
+            # All paraphrases in MyriadLAMA are manually generated
+            # Simply select the first N paraphrases
             all_templates = list(paraphrases)
-            
-            if args.num_manual is not None:
-                manual_templates = all_templates[:args.num_manual]
-                remaining_templates = all_templates[args.num_manual:]
-            else:
-                # Use all manual templates (typically the first few)
-                # For MyriadLAMA, manual templates come first
-                # We'll take all but the last 5 (which are auto-generated)
-                if len(all_templates) > 5:
-                    manual_templates = all_templates[:-5]
-                    remaining_templates = all_templates[-5:]
-                else:
-                    manual_templates = []
-                    remaining_templates = all_templates
-            
-            # Select auto templates
-            auto_templates = remaining_templates[:args.num_auto]
-            
-            # Combine templates
-            selected_templates = manual_templates + auto_templates
-            manual_count = len(manual_templates) if args.allow_manual_cross_attention else 0
+            selected_templates = all_templates[:args.num_paraphrases]
             
             # Construct prompts for each template
             prompts = []
@@ -620,7 +555,6 @@ if __name__ == "__main__":
             # Generate using MyriadLAMA-specific FlexAttention
             generation = myriadlama_flex_generation(
                 prompts,
-                manual_count=manual_count,
                 max_new_tokens=10
             )
             
