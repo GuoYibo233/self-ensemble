@@ -6,15 +6,17 @@ designed for the MyriadLAMA dataset, with custom prompt construction and mask lo
 
 Key differences from flex_attention_generate.py:
 - Custom prompt formatting for [MASK] token prediction
-- Modified mask logic: each paraphrase/template is isolated during encoding
+- Modified mask logic: each segment is isolated during encoding
+- Segments include: instruction, each few-shot example, and each question paraphrase
 - All paraphrases are manually generated (no distinction between manual/auto)
 - Optimized for MyriadLAMA's fill-in-the-blank task structure
 
 Features:
-- Concatenates multiple paraphrases with position tracking
-- Uses FlexAttention to isolate attention within each paraphrase during encoding
-- Within each paraphrase, only causal attention (later tokens attend to earlier tokens)
-- Allows generated tokens to attend to all paraphrases for fusion
+- Parses prompts to identify instruction, few-shot examples, and questions
+- Each few-shot example is isolated (cannot attend to other few-shot examples)
+- Each question paraphrase is isolated (cannot attend to other paraphrases)
+- Within each segment, only causal attention (later tokens attend to earlier tokens)
+- Allows generated tokens to attend to all segments for fusion
 - Specifically designed for one-word prediction tasks
 """
 
@@ -84,43 +86,108 @@ def append_lemmas(df, results):
     return df
 
 # ==============================================================================
-# MODIFIED - MyriadLama-specific paraphrase concatenation
+# MODIFIED - MyriadLama-specific paraphrase concatenation with few-shot masking
 # ==============================================================================
+
+def parse_prompt_segments(prompt):
+    """
+    Parse a prompt into segments: instruction, few-shot examples, and question.
+    
+    A MyriadLAMA prompt has the structure:
+    {instruction}
+    
+    {few-shot example 1}
+    
+    {few-shot example 2}
+    ...
+    
+    Q: {question}
+    A:
+    
+    We want to identify:
+    - The instruction part (before first "Q:")
+    - Each few-shot example (each "Q: ... A: ..." pair)
+    - The actual question (last "Q: ..." without answer)
+    
+    Args:
+        prompt: Single prompt string
+        
+    Returns:
+        List of segment strings, each representing a part that should be isolated
+    """
+    segments = []
+    
+    # Split by Q: to find all Q-A pairs
+    parts = prompt.split("Q: ")
+    
+    # First part is the instruction (before any Q:)
+    if parts[0].strip():
+        segments.append(parts[0].strip())
+    
+    # Process Q-A pairs
+    for i, part in enumerate(parts[1:]):
+        # Each part starts after "Q: " and may contain "A: "
+        if "A:" in part:
+            # This is a Q-A pair (few-shot example or the question with answer prompt)
+            # Split by "A:" to separate question and answer
+            q_and_a = part.split("A:", 1)
+            question_text = q_and_a[0].strip()
+            answer_text = q_and_a[1].strip() if len(q_and_a) > 1 else ""
+            
+            # If there's an answer (even if empty), this is a complete pair
+            # The last one will have empty answer (just the prompt)
+            if i < len(parts[1:]) - 1:
+                # This is a few-shot example (has answer)
+                segments.append(f"Q: {question_text}\nA: {answer_text}".strip())
+            else:
+                # This is the actual question (no answer yet, or empty answer prompt)
+                segments.append(f"Q: {question_text}\nA:".strip())
+        else:
+            # Just a question without "A:" (shouldn't happen in normal prompts)
+            segments.append(f"Q: {part}".strip())
+    
+    return segments
 
 def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n"):
     """
-    Concatenate multiple prompts with optimized separator for MyriadLAMA.
+    Concatenate multiple prompts with segment-level position tracking for MyriadLAMA.
     
-    Modified for MyriadLAMA:
-    - Uses simpler separator (just double newline) since templates are shorter
-    - All paraphrases are manually generated (treated equally)
-    - Tracks position boundaries for each paraphrase
-    - Optimized for fill-in-the-blank task structure
+    Modified for MyriadLAMA with few-shot masking:
+    - Parses each prompt to identify instruction, few-shot examples, and question
+    - Each few-shot example is treated as a separate segment (isolated)
+    - Each question from different paraphrases is a separate segment
+    - All segments are tracked for proper masking
     
     Args:
         prompts: List of prompt strings (paraphrases, all manually generated)
         tokenizer: HuggingFace tokenizer
-        separator: Separator token between prompts (default: double newline)
+        separator: Separator token between segments (default: double newline)
         
     Returns:
         concatenated_text: Single concatenated string
-        segment_positions: List of (start, end) tuples for each template
+        segment_positions: List of (start, end) tuples for each segment
         total_length: Total number of tokens
     """
-    # Tokenize each prompt individually to get accurate lengths
-    tokenized_prompts = []
+    # Parse all prompts to extract segments
+    all_segments = []
+    for prompt in prompts:
+        segments = parse_prompt_segments(prompt)
+        all_segments.extend(segments)
+    
+    # Tokenize each segment individually
+    tokenized_segments = []
     sep_tokens = tokenizer.encode(separator, add_special_tokens=False)
     
-    for prompt in prompts:
-        tokens = tokenizer.encode(prompt, add_special_tokens=False)
-        tokenized_prompts.append(tokens)
+    for segment in all_segments:
+        tokens = tokenizer.encode(segment, add_special_tokens=False)
+        tokenized_segments.append(tokens)
     
     # Build full token sequence and track positions
     full_tokens = []
     segment_positions = []
     current_pos = 0
     
-    for i, tokens in enumerate(tokenized_prompts):
+    for i, tokens in enumerate(tokenized_segments):
         if i > 0:
             # Add separator
             full_tokens.extend(sep_tokens)
@@ -144,16 +211,23 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
 
 def create_myriadlama_mask(segment_positions, original_length):
     """
-    Create attention mask for MyriadLAMA template-based ensemble generation.
+    Create attention mask for MyriadLAMA with few-shot example masking.
     
     Mask logic for MyriadLAMA:
-    - All templates/paraphrases are manually generated (no auto-generated templates)
-    - During encoding: Each template is isolated and can only attend to itself
-    - Within each template: Later tokens can attend to earlier tokens (causal)
-    - During generation: New tokens attend to all templates for fusion
+    - All segments (instruction, few-shot examples, question paraphrases) are isolated
+    - Each few-shot example is a separate segment and cannot attend to other segments
+    - Each question paraphrase is a separate segment and cannot attend to other segments
+    - Within each segment: only causal attention (later tokens attend to earlier tokens)
+    - During generation: new tokens attend to all segments for fusion
+    
+    This ensures that:
+    1. Few-shot examples don't influence each other during encoding
+    2. Different question paraphrases don't influence each other during encoding
+    3. Generated answer can attend to all context for fusion
     
     Args:
-        segment_positions: List of (start, end) tuples defining template boundaries
+        segment_positions: List of (start, end) tuples defining all segment boundaries
+                          (includes instruction, few-shot examples, and questions)
         original_length: Length of the original concatenated sequence
         
     Returns:
