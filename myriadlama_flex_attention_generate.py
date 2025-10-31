@@ -86,8 +86,215 @@ def append_lemmas(df, results):
     return df
 
 # ==============================================================================
+# NEW - Helper functions for new prompt format
+# ==============================================================================
+
+def get_few_shot_examples_with_paraphrases(dataset, k=5, num_fs_paraphrases=3, seed=42):
+    """
+    Get few-shot examples formatted with multiple paraphrase questions + one answer.
+    
+    New format per user requirement:
+    Each few-shot example has:
+    - Multiple paraphrase questions (e.g., 3 paraphrases)
+    - One answer (shared by all paraphrases)
+    
+    Args:
+        dataset: MyriadLamaDataset instance
+        k: Number of few-shot examples
+        num_fs_paraphrases: Number of paraphrase questions per few-shot
+        seed: Random seed
+        
+    Returns:
+        List of few-shot examples, each as:
+        {'paraphrases': [q1, q2, ...], 'answer': ans}
+    """
+    import random
+    from datasets import load_from_disk
+    
+    if not os.path.exists(dataset.dataset_path):
+        raise FileNotFoundError(f"Dataset not found at {dataset.dataset_path}")
+    
+    train_ds = load_from_disk(dataset.dataset_path)['train']
+    random.seed(seed)
+    indices = random.sample(range(len(train_ds)), k)
+    
+    few_shot_examples = []
+    for idx in indices:
+        example = train_ds[idx]
+        # Get available paraphrases (manual_paraphrases + auto_paraphrases)
+        all_paras = example["manual_paraphrases"] + example.get("auto_paraphrases", [])
+        # Select first num_fs_paraphrases
+        selected_paras = all_paras[:min(num_fs_paraphrases, len(all_paras))]
+        answer = example["answers"][0]
+        
+        few_shot_examples.append({
+            'paraphrases': selected_paras,
+            'answer': answer
+        })
+    
+    return few_shot_examples
+
+
+def construct_single_prompt_new_format(instruction, few_shot_examples, question_paraphrase):
+    """
+    Construct a single prompt in the new format.
+    
+    Format:
+    {instruction}
+    
+    Q: {fs1_para1}
+    Q: {fs1_para2}
+    Q: {fs1_para3}
+    A: {fs1_answer}
+    
+    Q: {fs2_para1}
+    Q: {fs2_para2}
+    Q: {fs2_para3}
+    A: {fs2_answer}
+    
+    Q: {question_paraphrase}
+    A:
+    
+    Args:
+        instruction: Instruction string
+        few_shot_examples: List of {'paraphrases': [...], 'answer': ...}
+        question_paraphrase: Single question paraphrase string
+        
+    Returns:
+        Single prompt string
+    """
+    prompt_parts = [instruction]
+    
+    # Add few-shot examples
+    for fs_example in few_shot_examples:
+        fs_parts = []
+        # Add all paraphrase questions
+        for para in fs_example['paraphrases']:
+            fs_parts.append(f"Q: {para}")
+        # Add answer
+        fs_parts.append(f"A: {fs_example['answer']}")
+        prompt_parts.append("\n".join(fs_parts))
+    
+    # Add main question paraphrase
+    prompt_parts.append(f"Q: {question_paraphrase}\nA:")
+    
+    return "\n\n".join(prompt_parts)
+
+
+# ==============================================================================
 # MODIFIED - MyriadLama-specific paraphrase concatenation with few-shot masking
 # ==============================================================================
+
+def parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx):
+    """
+    Parse a prompt in the NEW format into segments with metadata.
+    
+    NEW MyriadLAMA prompt structure:
+    {instruction}
+    
+    Q: {fs1_para1}
+    Q: {fs1_para2}
+    Q: {fs1_para3}
+    A: {fs1_answer}
+    
+    Q: {fs2_para1}
+    Q: {fs2_para2}
+    Q: {fs2_para3}
+    A: {fs2_answer}
+    
+    Q: {main_question}
+    A:
+    
+    Returns segments with metadata to enable proper masking:
+    - Each Q paraphrase in a few-shot example is a separate segment
+    - The A in a few-shot example is a separate segment
+    - The main question is a separate segment
+    
+    Args:
+        prompt: Single prompt string
+        paraphrase_idx: Which paraphrase of main question (0, 1, 2, ...)
+        
+    Returns:
+        List of tuples: (segment_text, metadata_dict)
+        metadata_dict contains:
+            - 'type': 'instruction', 'few_shot_q', 'few_shot_a', or 'question'
+            - 'paraphrase_idx': which main question paraphrase
+            - 'few_shot_idx': which few-shot example (for few_shot type)
+            - 'fs_q_para_idx': which paraphrase within a few-shot (for few_shot_q type)
+    """
+    segments = []
+    
+    # Split by double newline to get sections
+    sections = prompt.split("\n\n")
+    
+    # First section is instruction
+    if sections[0].strip():
+        segments.append((
+            sections[0].strip(),
+            {
+                'type': 'instruction', 
+                'paraphrase_idx': paraphrase_idx, 
+                'few_shot_idx': None,
+                'fs_q_para_idx': None
+            }
+        ))
+    
+    # Process remaining sections
+    # Count few-shot examples vs main question
+    few_shot_count = 0
+    
+    for section_idx, section in enumerate(sections[1:]):
+        if not section.strip():
+            continue
+            
+        lines = section.strip().split('\n')
+        
+        # Check if this section ends with "A:" (main question) or "A: {answer}" (few-shot)
+        has_answer_value = any(line.startswith("A:") and len(line) > 2 for line in lines)
+        
+        if has_answer_value:
+            # This is a few-shot example with multiple Q paraphrases + one A
+            q_lines = [line for line in lines if line.startswith("Q:")]
+            a_line = [line for line in lines if line.startswith("A:")][0]
+            
+            # Add each Q paraphrase as a segment
+            for q_para_idx, q_line in enumerate(q_lines):
+                segments.append((
+                    q_line.strip(),
+                    {
+                        'type': 'few_shot_q',
+                        'paraphrase_idx': paraphrase_idx,
+                        'few_shot_idx': few_shot_count,
+                        'fs_q_para_idx': q_para_idx
+                    }
+                ))
+            
+            # Add the answer as a segment
+            segments.append((
+                a_line.strip(),
+                {
+                    'type': 'few_shot_a',
+                    'paraphrase_idx': paraphrase_idx,
+                    'few_shot_idx': few_shot_count,
+                    'fs_q_para_idx': None
+                }
+            ))
+            
+            few_shot_count += 1
+        else:
+            # This is the main question (Q: ... A:)
+            segments.append((
+                section.strip(),
+                {
+                    'type': 'question',
+                    'paraphrase_idx': paraphrase_idx,
+                    'few_shot_idx': None,
+                    'fs_q_para_idx': None
+                }
+            ))
+    
+    return segments
+
 
 def parse_prompt_segments_with_metadata(prompt, paraphrase_idx):
     """
@@ -177,9 +384,9 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
     """
     Concatenate multiple prompts with segment-level position tracking and metadata for MyriadLAMA.
     
-    Modified for MyriadLAMA with complex few-shot masking:
-    - Parses each prompt to identify instruction, few-shot Q/A pairs, and question
-    - Tracks metadata: paraphrase index, few-shot index, segment type
+    Modified for MyriadLAMA with complex few-shot masking (NEW FORMAT):
+    - Parses each prompt to identify instruction, few-shot Q/A pairs (with multi-para Qs), and question
+    - Tracks metadata: paraphrase index, few-shot index, segment type, fs_q_para_idx
     - Enables masking where:
       * Paraphrases of same few-shot cannot attend to each other
       * Paraphrases from different few-shot can attend to each other
@@ -197,12 +404,12 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
         segment_metadata: List of metadata dicts for each segment
         total_length: Total number of tokens
     """
-    # Parse all prompts to extract segments with metadata
+    # Parse all prompts to extract segments with metadata (using NEW format parser)
     all_segments = []
     all_metadata = []
     
     for paraphrase_idx, prompt in enumerate(prompts):
-        segments_with_meta = parse_prompt_segments_with_metadata(prompt, paraphrase_idx)
+        segments_with_meta = parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx)
         for seg_text, meta in segments_with_meta:
             all_segments.append(seg_text)
             all_metadata.append(meta)
@@ -320,8 +527,10 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         kv_para = kv_meta['paraphrase_idx']
         q_fs = q_meta['few_shot_idx']
         kv_fs = kv_meta['few_shot_idx']
+        q_fs_q_para = q_meta.get('fs_q_para_idx')
+        kv_fs_q_para = kv_meta.get('fs_q_para_idx')
         
-        # Apply masking rules
+        # Apply masking rules (UPDATED for new format)
         
         # Rule: Instruction can attend to itself
         if q_type == 'instruction' and kv_type == 'instruction':
@@ -333,7 +542,7 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         
         # Rule: Few-shot answers have normal causal mask
         if q_type == 'few_shot_a':
-            # Answer can attend to its own question
+            # Answer can attend to ALL question paraphrases of its own few-shot
             if kv_type == 'few_shot_q' and q_para == kv_para and q_fs == kv_fs:
                 return causal_mask & torch.tensor(True, device=device)
             # Answer can attend to other few-shot questions from different few-shot examples
@@ -341,36 +550,37 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
                 return causal_mask & torch.tensor(True, device=device)
             # Answer can attend to other few-shot answers
             elif kv_type == 'few_shot_a':
-                # Same few-shot, different paraphrase - can attend
-                if q_fs == kv_fs and q_para != kv_para:
-                    return causal_mask & torch.tensor(True, device=device)
                 # Different few-shot - can attend
-                elif q_fs != kv_fs:
+                if q_fs != kv_fs:
                     return causal_mask & torch.tensor(True, device=device)
                 # Same segment - can attend (causal)
                 elif q_seg == kv_seg:
                     return causal_mask & torch.tensor(True, device=device)
             return causal_mask & torch.tensor(False, device=device)
         
-        # Rule: Few-shot questions - complex paraphrase rules
+        # Rule: Few-shot questions - NEW complex paraphrase rules
         if q_type == 'few_shot_q' and kv_type == 'few_shot_q':
-            # Same few-shot example, same paraphrase - can attend (causal)
-            if q_fs == kv_fs and q_para == kv_para:
+            # Same few-shot, same main paraphrase, same fs_q_para - can attend (causal)
+            if q_fs == kv_fs and q_para == kv_para and q_fs_q_para == kv_fs_q_para:
                 return causal_mask & torch.tensor(True, device=device)
-            # Same few-shot example, different paraphrase - CANNOT attend
-            elif q_fs == kv_fs and q_para != kv_para:
+            # Same few-shot, same main paraphrase, different fs_q_para - CANNOT attend
+            elif q_fs == kv_fs and q_para == kv_para and q_fs_q_para != kv_fs_q_para:
                 return causal_mask & torch.tensor(False, device=device)
             # Different few-shot - CAN attend
-            else:
+            elif q_fs != kv_fs:
                 return causal_mask & torch.tensor(True, device=device)
+            # Same few-shot, different main paraphrase - CANNOT attend
+            elif q_fs == kv_fs and q_para != kv_para:
+                return causal_mask & torch.tensor(False, device=device)
+            return causal_mask & torch.tensor(False, device=device)
         
         # Rule: Few-shot questions can attend to few-shot answers
         if q_type == 'few_shot_q' and kv_type == 'few_shot_a':
             # Different few-shot - can attend
             if q_fs != kv_fs:
                 return causal_mask & torch.tensor(True, device=device)
-            # Same few-shot, different paraphrase - cannot
-            elif q_fs == kv_fs and q_para != kv_para:
+            # Same few-shot, same main paraphrase - cannot attend (Q comes before A)
+            elif q_fs == kv_fs and q_para == kv_para:
                 return causal_mask & torch.tensor(False, device=device)
             return causal_mask & torch.tensor(False, device=device)
         
@@ -637,7 +847,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--num_paraphrases", type=int, default=5,
-        help="Number of paraphrases to use (default: 5)"
+        help="Number of paraphrases to use for main question (default: 5)"
+    )
+    parser.add_argument(
+        "--num_fs_paraphrases", type=int, default=3,
+        help="Number of paraphrases per few-shot example (default: 3)"
     )
     parser.add_argument(
         "--max_samples", type=int, default=None,
@@ -719,8 +933,14 @@ if __name__ == "__main__":
     if args.max_samples:
         print(f"Processing maximum {args.max_samples} samples")
     
-    # Few-shot context
-    few_shot_context = dataset.get_few_shot_examples()
+    # Get few-shot examples with multiple paraphrases (new format)
+    few_shot_examples = get_few_shot_examples_with_paraphrases(
+        dataset, 
+        k=5, 
+        num_fs_paraphrases=args.num_fs_paraphrases,
+        seed=42
+    )
+    instruction = dataset.instruction
     
     # Main generation loop
     sample_count = 0
@@ -736,11 +956,16 @@ if __name__ == "__main__":
             all_templates = list(paraphrases)
             selected_templates = all_templates[:args.num_paraphrases]
             
-            # Construct prompts for each template
+            # Construct prompts using new format
+            # Each prompt has: instruction + few-shot examples + one question paraphrase
             prompts = []
             for template in selected_templates:
-                prompt = dataset.construct_prompts(few_shot_context, [template])
-                prompts.append(prompt[0])
+                prompt = construct_single_prompt_new_format(
+                    instruction,
+                    few_shot_examples,
+                    template
+                )
+                prompts.append(prompt)
             
             # Generate using MyriadLAMA-specific FlexAttention
             generation = myriadlama_flex_generation(
