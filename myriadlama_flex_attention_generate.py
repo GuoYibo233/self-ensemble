@@ -89,31 +89,37 @@ def append_lemmas(df, results):
 # MODIFIED - MyriadLama-specific paraphrase concatenation with few-shot masking
 # ==============================================================================
 
-def parse_prompt_segments(prompt):
+def parse_prompt_segments_with_metadata(prompt, paraphrase_idx):
     """
-    Parse a prompt into segments: instruction, few-shot examples, and question.
+    Parse a prompt into segments with metadata for proper masking.
     
     A MyriadLAMA prompt has the structure:
     {instruction}
     
-    {few-shot example 1}
+    {few-shot example 1: Q: ... A: ...}
     
-    {few-shot example 2}
+    {few-shot example 2: Q: ... A: ...}
     ...
     
     Q: {question}
     A:
     
-    We want to identify:
-    - The instruction part (before first "Q:")
-    - Each few-shot example (each "Q: ... A: ..." pair)
-    - The actual question (last "Q: ..." without answer)
+    Returns segments with metadata to enable proper masking:
+    - Paraphrases of same few-shot example cannot attend to each other
+    - Paraphrases from different few-shot can attend to each other
+    - Answer parts have normal causal mask
+    - Question paraphrases are isolated
     
     Args:
         prompt: Single prompt string
+        paraphrase_idx: Which paraphrase this prompt represents (0, 1, 2, ...)
         
     Returns:
-        List of segment strings, each representing a part that should be isolated
+        List of tuples: (segment_text, metadata_dict)
+        metadata_dict contains:
+            - 'type': 'instruction', 'few_shot_q', 'few_shot_a', or 'question'
+            - 'paraphrase_idx': which paraphrase this belongs to
+            - 'few_shot_idx': which few-shot example (for few_shot type)
     """
     segments = []
     
@@ -122,9 +128,13 @@ def parse_prompt_segments(prompt):
     
     # First part is the instruction (before any Q:)
     if parts[0].strip():
-        segments.append(parts[0].strip())
+        segments.append((
+            parts[0].strip(),
+            {'type': 'instruction', 'paraphrase_idx': paraphrase_idx, 'few_shot_idx': None}
+        ))
     
     # Process Q-A pairs
+    few_shot_count = 0
     for i, part in enumerate(parts[1:]):
         # Each part starts after "Q: " and may contain "A: "
         if "A:" in part:
@@ -134,29 +144,47 @@ def parse_prompt_segments(prompt):
             question_text = q_and_a[0].strip()
             answer_text = q_and_a[1].strip() if len(q_and_a) > 1 else ""
             
-            # If there's an answer (even if empty), this is a complete pair
-            # The last one will have empty answer (just the prompt)
-            if i < len(parts[1:]) - 1:
-                # This is a few-shot example (has answer)
-                segments.append(f"Q: {question_text}\nA: {answer_text}".strip())
+            # Check if this is a few-shot example (has non-empty answer) or the final question
+            is_few_shot = (i < len(parts[1:]) - 1) or (answer_text and answer_text != "")
+            
+            if is_few_shot:
+                # This is a few-shot example - split into question and answer segments
+                segments.append((
+                    f"Q: {question_text}".strip(),
+                    {'type': 'few_shot_q', 'paraphrase_idx': paraphrase_idx, 'few_shot_idx': few_shot_count}
+                ))
+                segments.append((
+                    f"A: {answer_text}".strip(),
+                    {'type': 'few_shot_a', 'paraphrase_idx': paraphrase_idx, 'few_shot_idx': few_shot_count}
+                ))
+                few_shot_count += 1
             else:
-                # This is the actual question (no answer yet, or empty answer prompt)
-                segments.append(f"Q: {question_text}\nA:".strip())
+                # This is the actual question (final Q with empty A:)
+                segments.append((
+                    f"Q: {question_text}\nA:".strip(),
+                    {'type': 'question', 'paraphrase_idx': paraphrase_idx, 'few_shot_idx': None}
+                ))
         else:
             # Just a question without "A:" (shouldn't happen in normal prompts)
-            segments.append(f"Q: {part}".strip())
+            segments.append((
+                f"Q: {part}".strip(),
+                {'type': 'question', 'paraphrase_idx': paraphrase_idx, 'few_shot_idx': None}
+            ))
     
     return segments
 
 def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n"):
     """
-    Concatenate multiple prompts with segment-level position tracking for MyriadLAMA.
+    Concatenate multiple prompts with segment-level position tracking and metadata for MyriadLAMA.
     
-    Modified for MyriadLAMA with few-shot masking:
-    - Parses each prompt to identify instruction, few-shot examples, and question
-    - Each few-shot example is treated as a separate segment (isolated)
-    - Each question from different paraphrases is a separate segment
-    - All segments are tracked for proper masking
+    Modified for MyriadLAMA with complex few-shot masking:
+    - Parses each prompt to identify instruction, few-shot Q/A pairs, and question
+    - Tracks metadata: paraphrase index, few-shot index, segment type
+    - Enables masking where:
+      * Paraphrases of same few-shot cannot attend to each other
+      * Paraphrases from different few-shot can attend to each other
+      * Answer parts have normal causal mask
+      * Question paraphrases are isolated
     
     Args:
         prompts: List of prompt strings (paraphrases, all manually generated)
@@ -166,13 +194,18 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
     Returns:
         concatenated_text: Single concatenated string
         segment_positions: List of (start, end) tuples for each segment
+        segment_metadata: List of metadata dicts for each segment
         total_length: Total number of tokens
     """
-    # Parse all prompts to extract segments
+    # Parse all prompts to extract segments with metadata
     all_segments = []
-    for prompt in prompts:
-        segments = parse_prompt_segments(prompt)
-        all_segments.extend(segments)
+    all_metadata = []
+    
+    for paraphrase_idx, prompt in enumerate(prompts):
+        segments_with_meta = parse_prompt_segments_with_metadata(prompt, paraphrase_idx)
+        for seg_text, meta in segments_with_meta:
+            all_segments.append(seg_text)
+            all_metadata.append(meta)
     
     # Tokenize each segment individually
     tokenized_segments = []
@@ -203,31 +236,33 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
     # Decode back to text
     concatenated_text = tokenizer.decode(full_tokens, skip_special_tokens=False)
     
-    return concatenated_text, segment_positions, len(full_tokens)
+    return concatenated_text, segment_positions, all_metadata, len(full_tokens)
 
 # ==============================================================================
 # MODIFIED - MyriadLama-specific mask creation
 # ==============================================================================
 
-def create_myriadlama_mask(segment_positions, original_length):
+def create_myriadlama_mask(segment_positions, segment_metadata, original_length):
     """
-    Create attention mask for MyriadLAMA with few-shot example masking.
+    Create attention mask for MyriadLAMA with complex few-shot and paraphrase masking.
     
     Mask logic for MyriadLAMA:
-    - All segments (instruction, few-shot examples, question paraphrases) are isolated
-    - Each few-shot example is a separate segment and cannot attend to other segments
-    - Each question paraphrase is a separate segment and cannot attend to other segments
-    - Within each segment: only causal attention (later tokens attend to earlier tokens)
+    - Paraphrases of the same few-shot example CANNOT attend to each other
+    - Paraphrases from different few-shot examples CAN attend to each other
+    - Answer parts of few-shot examples have normal causal mask
+    - Question paraphrases are isolated from each other
     - During generation: new tokens attend to all segments for fusion
     
     This ensures that:
-    1. Few-shot examples don't influence each other during encoding
-    2. Different question paraphrases don't influence each other during encoding
-    3. Generated answer can attend to all context for fusion
+    1. Few-shot example 1 from paraphrase A can attend to few-shot example 1 from paraphrase B
+       (but only the question parts are isolated by paraphrase)
+    2. Few-shot example 1 from paraphrase A can attend to few-shot example 2 from paraphrase A
+    3. Answer parts can attend normally (causal)
+    4. Question paraphrases remain isolated
     
     Args:
         segment_positions: List of (start, end) tuples defining all segment boundaries
-                          (includes instruction, few-shot examples, and questions)
+        segment_metadata: List of dicts with 'type', 'paraphrase_idx', 'few_shot_idx'
         original_length: Length of the original concatenated sequence
         
     Returns:
@@ -238,17 +273,16 @@ def create_myriadlama_mask(segment_positions, original_length):
     # Convert segment positions to tensors
     segment_starts = torch.tensor([start for start, _ in segment_positions], dtype=torch.int64)
     segment_ends = torch.tensor([end for _, end in segment_positions], dtype=torch.int64)
+    num_segments = len(segment_positions)
     
     def mask_mod(b, h, q_idx, kv_idx):
         """
-        Mask function for MyriadLAMA FlexAttention.
+        Mask function for MyriadLAMA FlexAttention with complex rules.
         
         Logic:
-        1. Always enforce causal constraint (later tokens cannot attend to future tokens)
+        1. Always enforce causal constraint (cannot attend to future)
         2. Generated tokens (>= original_length) attend to all previous tokens
-        3. Within encoding phase: Each template only attends to itself
-           - Tokens in template i can only attend to tokens in template i
-           - Within template i, only causal attention (later to earlier)
+        3. Within encoding phase, apply complex rules based on segment types
         """
         # Move segment tensors to same device as indices
         device = q_idx.device
@@ -261,20 +295,101 @@ def create_myriadlama_mask(segment_positions, original_length):
         # If query is in generation phase, allow attention to all previous tokens
         is_generated = q_idx >= original_length
         
-        # For original tokens, determine segment membership
-        # q_in_segment[i] = True if q_idx is in segment i
+        # Find which segment the query and key belong to
         q_in_segment = (q_idx >= seg_starts) & (q_idx < seg_ends)
-        # kv_in_segment[i] = True if kv_idx is in segment i
         kv_in_segment = (kv_idx >= seg_starts) & (kv_idx < seg_ends)
         
-        # Both must be in the same segment for attention to be allowed
-        # This ensures each template is isolated during encoding
-        same_segment = (q_in_segment & kv_in_segment).any()
+        # Get segment indices
+        q_seg_idx = torch.where(q_in_segment)[0]
+        kv_seg_idx = torch.where(kv_in_segment)[0]
         
-        # Combine all constraints:
-        # 1. Must satisfy causal constraint
-        # 2. Either: query is a generated token OR query and key are in same template
-        result = causal_mask & (is_generated | same_segment)
+        # If either index is not in any segment, default to False
+        if len(q_seg_idx) == 0 or len(kv_seg_idx) == 0:
+            return causal_mask & torch.tensor(False, device=device)
+        
+        q_seg = q_seg_idx[0].item()
+        kv_seg = kv_seg_idx[0].item()
+        
+        # Get metadata for these segments
+        q_meta = segment_metadata[q_seg]
+        kv_meta = segment_metadata[kv_seg]
+        
+        q_type = q_meta['type']
+        kv_type = kv_meta['type']
+        q_para = q_meta['paraphrase_idx']
+        kv_para = kv_meta['paraphrase_idx']
+        q_fs = q_meta['few_shot_idx']
+        kv_fs = kv_meta['few_shot_idx']
+        
+        # Apply masking rules
+        
+        # Rule: Instruction can attend to itself
+        if q_type == 'instruction' and kv_type == 'instruction':
+            return causal_mask & torch.tensor(True, device=device)
+        
+        # Rule: All segments can attend to instruction
+        if kv_type == 'instruction':
+            return causal_mask & torch.tensor(True, device=device)
+        
+        # Rule: Few-shot answers have normal causal mask
+        if q_type == 'few_shot_a':
+            # Answer can attend to its own question
+            if kv_type == 'few_shot_q' and q_para == kv_para and q_fs == kv_fs:
+                return causal_mask & torch.tensor(True, device=device)
+            # Answer can attend to other few-shot questions from different few-shot examples
+            elif kv_type == 'few_shot_q' and q_fs != kv_fs:
+                return causal_mask & torch.tensor(True, device=device)
+            # Answer can attend to other few-shot answers
+            elif kv_type == 'few_shot_a':
+                # Same few-shot, different paraphrase - can attend
+                if q_fs == kv_fs and q_para != kv_para:
+                    return causal_mask & torch.tensor(True, device=device)
+                # Different few-shot - can attend
+                elif q_fs != kv_fs:
+                    return causal_mask & torch.tensor(True, device=device)
+                # Same segment - can attend (causal)
+                elif q_seg == kv_seg:
+                    return causal_mask & torch.tensor(True, device=device)
+            return causal_mask & torch.tensor(False, device=device)
+        
+        # Rule: Few-shot questions - complex paraphrase rules
+        if q_type == 'few_shot_q' and kv_type == 'few_shot_q':
+            # Same few-shot example, same paraphrase - can attend (causal)
+            if q_fs == kv_fs and q_para == kv_para:
+                return causal_mask & torch.tensor(True, device=device)
+            # Same few-shot example, different paraphrase - CANNOT attend
+            elif q_fs == kv_fs and q_para != kv_para:
+                return causal_mask & torch.tensor(False, device=device)
+            # Different few-shot - CAN attend
+            else:
+                return causal_mask & torch.tensor(True, device=device)
+        
+        # Rule: Few-shot questions can attend to few-shot answers
+        if q_type == 'few_shot_q' and kv_type == 'few_shot_a':
+            # Different few-shot - can attend
+            if q_fs != kv_fs:
+                return causal_mask & torch.tensor(True, device=device)
+            # Same few-shot, different paraphrase - cannot
+            elif q_fs == kv_fs and q_para != kv_para:
+                return causal_mask & torch.tensor(False, device=device)
+            return causal_mask & torch.tensor(False, device=device)
+        
+        # Rule: Question paraphrases are isolated from each other
+        if q_type == 'question' and kv_type == 'question':
+            # Same paraphrase - can attend (causal)
+            if q_para == kv_para:
+                return causal_mask & torch.tensor(True, device=device)
+            # Different paraphrase - CANNOT attend
+            else:
+                return causal_mask & torch.tensor(False, device=device)
+        
+        # Rule: Questions can attend to few-shot examples
+        if q_type == 'question' and (kv_type == 'few_shot_q' or kv_type == 'few_shot_a'):
+            return causal_mask & torch.tensor(True, device=device)
+        
+        # Default: allow if same segment
+        same_segment = q_seg == kv_seg
+        result = causal_mask & torch.tensor(same_segment, device=device)
         
         return result
     
@@ -433,8 +548,8 @@ def myriadlama_flex_generation(prompts, max_new_tokens=10):
     model.generation_config.top_p = None
     model.generation_config.pad_token_id = tokenizer.eos_token_id
     
-    # Concatenate templates with position tracking
-    concatenated_text, segment_positions, original_length = \
+    # Concatenate templates with position tracking and metadata
+    concatenated_text, segment_positions, segment_metadata, original_length = \
         concatenate_paraphrases_with_positions(prompts, tokenizer)
     
     # Tokenize input
@@ -454,9 +569,10 @@ def myriadlama_flex_generation(prompts, max_new_tokens=10):
     for step in range(max_new_tokens):
         current_length = inputs["input_ids"].shape[1]
         
-        # Create mask for MyriadLAMA (all templates are isolated)
+        # Create mask for MyriadLAMA with complex few-shot paraphrase rules
         mask_mod = create_myriadlama_mask(
-            segment_positions, 
+            segment_positions,
+            segment_metadata,
             original_length
         )
         
