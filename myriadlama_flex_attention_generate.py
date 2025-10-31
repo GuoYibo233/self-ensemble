@@ -136,9 +136,9 @@ def get_few_shot_examples_with_paraphrases(dataset, k=5, num_fs_paraphrases=3, s
     return few_shot_examples
 
 
-def construct_single_prompt_new_format(instruction, few_shot_examples, question_paraphrase):
+def construct_prompt_new_format(instruction, few_shot_examples, question_paraphrases):
     """
-    Construct a single prompt in the new format.
+    Construct a prompt in the new format with ALL question paraphrases.
     
     Format:
     {instruction}
@@ -153,13 +153,15 @@ def construct_single_prompt_new_format(instruction, few_shot_examples, question_
     Q: {fs2_para3}
     A: {fs2_answer}
     
-    Q: {question_paraphrase}
+    Q: {main_question_paraphrase1}
+    Q: {main_question_paraphrase2}
+    Q: {main_question_paraphrase3}
     A:
     
     Args:
         instruction: Instruction string
         few_shot_examples: List of {'paraphrases': [...], 'answer': ...}
-        question_paraphrase: Single question paraphrase string
+        question_paraphrases: List of all main question paraphrase strings
         
     Returns:
         Single prompt string
@@ -176,8 +178,12 @@ def construct_single_prompt_new_format(instruction, few_shot_examples, question_
         fs_parts.append(f"A: {fs_example['answer']}")
         prompt_parts.append("\n".join(fs_parts))
     
-    # Add main question paraphrase
-    prompt_parts.append(f"Q: {question_paraphrase}\nA:")
+    # Add ALL main question paraphrases
+    main_q_parts = []
+    for para in question_paraphrases:
+        main_q_parts.append(f"Q: {para}")
+    main_q_parts.append("A:")
+    prompt_parts.append("\n".join(main_q_parts))
     
     return "\n\n".join(prompt_parts)
 
@@ -186,7 +192,7 @@ def construct_single_prompt_new_format(instruction, few_shot_examples, question_
 # MODIFIED - MyriadLama-specific paraphrase concatenation with few-shot masking
 # ==============================================================================
 
-def parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx):
+def parse_prompt_segments_with_metadata_new_format(prompt):
     """
     Parse a prompt in the NEW format into segments with metadata.
     
@@ -203,23 +209,24 @@ def parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx):
     Q: {fs2_para3}
     A: {fs2_answer}
     
-    Q: {main_question}
+    Q: {main_question_para1}
+    Q: {main_question_para2}
+    Q: {main_question_para3}
     A:
     
     Returns segments with metadata to enable proper masking:
     - Each Q paraphrase in a few-shot example is a separate segment
     - The A in a few-shot example is a separate segment
-    - The main question is a separate segment
+    - Each main question paraphrase is a separate segment
     
     Args:
-        prompt: Single prompt string
-        paraphrase_idx: Which paraphrase of main question (0, 1, 2, ...)
+        prompt: Single prompt string (with all main question paraphrases)
         
     Returns:
         List of tuples: (segment_text, metadata_dict)
         metadata_dict contains:
             - 'type': 'instruction', 'few_shot_q', 'few_shot_a', or 'question'
-            - 'paraphrase_idx': which main question paraphrase
+            - 'paraphrase_idx': which main question paraphrase (for 'question' type)
             - 'few_shot_idx': which few-shot example (for few_shot type)
             - 'fs_q_para_idx': which paraphrase within a few-shot (for few_shot_q type)
     """
@@ -234,7 +241,7 @@ def parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx):
             sections[0].strip(),
             {
                 'type': 'instruction', 
-                'paraphrase_idx': paraphrase_idx, 
+                'paraphrase_idx': None, 
                 'few_shot_idx': None,
                 'fs_q_para_idx': None
             }
@@ -264,7 +271,7 @@ def parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx):
                     q_line.strip(),
                     {
                         'type': 'few_shot_q',
-                        'paraphrase_idx': paraphrase_idx,
+                        'paraphrase_idx': None,  # FS doesn't belong to a main para
                         'few_shot_idx': few_shot_count,
                         'fs_q_para_idx': q_para_idx
                     }
@@ -275,7 +282,7 @@ def parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx):
                 a_line.strip(),
                 {
                     'type': 'few_shot_a',
-                    'paraphrase_idx': paraphrase_idx,
+                    'paraphrase_idx': None,
                     'few_shot_idx': few_shot_count,
                     'fs_q_para_idx': None
                 }
@@ -283,16 +290,20 @@ def parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx):
             
             few_shot_count += 1
         else:
-            # This is the main question (Q: ... A:)
-            segments.append((
-                section.strip(),
-                {
-                    'type': 'question',
-                    'paraphrase_idx': paraphrase_idx,
-                    'few_shot_idx': None,
-                    'fs_q_para_idx': None
-                }
-            ))
+            # This is the main question section with MULTIPLE Q paraphrases + A:
+            q_lines = [line for line in lines if line.startswith("Q:")]
+            
+            # Add each main question paraphrase as a segment
+            for main_q_para_idx, q_line in enumerate(q_lines):
+                segments.append((
+                    q_line.strip(),
+                    {
+                        'type': 'question',
+                        'paraphrase_idx': main_q_para_idx,  # Track which main Q para
+                        'few_shot_idx': None,
+                        'fs_q_para_idx': None
+                    }
+                ))
     
     return segments
 
@@ -381,21 +392,21 @@ def parse_prompt_segments_with_metadata(prompt, paraphrase_idx):
     
     return segments
 
-def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n"):
+def concatenate_paraphrases_with_positions(prompt, tokenizer, separator="\n\n"):
     """
-    Concatenate multiple prompts with segment-level position tracking and metadata for MyriadLAMA.
+    Process a SINGLE prompt with ALL paraphrases and segment-level position tracking for MyriadLAMA.
     
     Modified for MyriadLAMA with complex few-shot masking (NEW FORMAT):
-    - Parses each prompt to identify instruction, few-shot Q/A pairs (with multi-para Qs), and question
+    - Parses the prompt to identify instruction, few-shot Q/A pairs (with multi-para Qs), and main Q paras
     - Tracks metadata: paraphrase index, few-shot index, segment type, fs_q_para_idx
     - Enables masking where:
       * Paraphrases of same few-shot cannot attend to each other
       * Paraphrases from different few-shot can attend to each other
       * Answer parts have normal causal mask
-      * Question paraphrases are isolated
+      * Main question paraphrases are isolated
     
     Args:
-        prompts: List of prompt strings (paraphrases, all manually generated)
+        prompt: Single prompt string with ALL paraphrases
         tokenizer: HuggingFace tokenizer
         separator: Separator token between segments (default: double newline)
         
@@ -405,15 +416,15 @@ def concatenate_paraphrases_with_positions(prompts, tokenizer, separator="\n\n")
         segment_metadata: List of metadata dicts for each segment
         total_length: Total number of tokens
     """
-    # Parse all prompts to extract segments with metadata (using NEW format parser)
+    # Parse the prompt to extract segments with metadata (using NEW format parser)
+    segments_with_meta = parse_prompt_segments_with_metadata_new_format(prompt)
+    
     all_segments = []
     all_metadata = []
     
-    for paraphrase_idx, prompt in enumerate(prompts):
-        segments_with_meta = parse_prompt_segments_with_metadata_new_format(prompt, paraphrase_idx)
-        for seg_text, meta in segments_with_meta:
-            all_segments.append(seg_text)
-            all_metadata.append(meta)
+    for seg_text, meta in segments_with_meta:
+        all_segments.append(seg_text)
+        all_metadata.append(meta)
     
     # Tokenize each segment individually
     tokenized_segments = []
@@ -736,18 +747,19 @@ class FlexAttentionWrapper:
 # ==============================================================================
 
 @torch.no_grad()
-def myriadlama_flex_generation(prompts, max_new_tokens=10):
+def myriadlama_flex_generation(prompt, max_new_tokens=10):
     """
     Generate text using FlexAttention for MyriadLAMA.
     
-    Modified for MyriadLAMA:
+    Modified for MyriadLAMA (NEW FORMAT):
+    - Accepts a SINGLE prompt with ALL paraphrases
     - Shorter max_new_tokens (10 instead of 20) for one-word answers
-    - All templates are treated equally (all are manually generated)
-    - Each template is isolated during encoding
+    - All paraphrases are treated equally (all are manually generated)
+    - Each paraphrase segment is isolated during encoding
     - Optimized for fill-in-the-blank task
     
     Args:
-        prompts: List of template-based prompts (all manually generated)
+        prompt: Single prompt string with ALL paraphrases
         max_new_tokens: Maximum tokens to generate (default: 10 for one-word answers)
         
     Returns:
@@ -759,9 +771,9 @@ def myriadlama_flex_generation(prompts, max_new_tokens=10):
     model.generation_config.top_p = None
     model.generation_config.pad_token_id = tokenizer.eos_token_id
     
-    # Concatenate templates with position tracking and metadata
+    # Process prompt with position tracking and metadata
     concatenated_text, segment_positions, segment_metadata, original_length = \
-        concatenate_paraphrases_with_positions(prompts, tokenizer)
+        concatenate_paraphrases_with_positions(prompt, tokenizer)
     
     # Tokenize input
     inputs = tokenizer(
@@ -954,20 +966,17 @@ if __name__ == "__main__":
             all_templates = list(paraphrases)
             selected_templates = all_templates[:args.num_paraphrases]
             
-            # Construct prompts using new format
-            # Each prompt has: instruction + few-shot examples + one question paraphrase
-            prompts = []
-            for template in selected_templates:
-                prompt = construct_single_prompt_new_format(
-                    instruction,
-                    few_shot_examples,
-                    template
-                )
-                prompts.append(prompt)
+            # Construct ONE prompt with ALL question paraphrases (NEW FORMAT)
+            # Prompt has: instruction + few-shot examples + ALL main question paraphrases
+            prompt = construct_prompt_new_format(
+                instruction,
+                few_shot_examples,
+                selected_templates  # Pass ALL paraphrases, not just one
+            )
             
             # Generate using MyriadLAMA-specific FlexAttention
             generation = myriadlama_flex_generation(
-                prompts,
+                prompt,  # Single prompt with all paraphrases
                 max_new_tokens=10
             )
             
