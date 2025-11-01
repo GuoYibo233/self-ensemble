@@ -498,9 +498,11 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         """
         Mask function for MyriadLAMA FlexAttention with complex rules.
         
+        IMPORTANT: Must use only tensor operations (no .item() or Python if on tensors)
+        to avoid vmap compilation errors.
+        
         Logic (PRIORITY ORDER):
         1. HIGHEST PRIORITY: Causal constraint (cannot attend to future)
-           - If kv_idx > q_idx, immediately return False
         2. Generated tokens (>= original_length) attend to all previous tokens
         3. Within encoding phase, apply complex rules based on segment types
         """
@@ -510,115 +512,113 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         seg_ends = segment_ends.to(device)
         
         # HIGHEST PRIORITY: Causal constraint - cannot attend to future
-        # If violates causality, immediately block (don't waste time on other checks)
         causal_mask = q_idx >= kv_idx
-        if not causal_mask:
-            return torch.tensor(False, device=device)
         
-        # If query is in generation phase, allow attention to all previous tokens
+        # If query is in generation phase, allow attention to all previous tokens (with causal)
         is_generated = q_idx >= original_length
-        if is_generated:
-            return torch.tensor(True, device=device)
         
         # Find which segment the query and key belong to
         q_in_segment = (q_idx >= seg_starts) & (q_idx < seg_ends)
         kv_in_segment = (kv_idx >= seg_starts) & (kv_idx < seg_ends)
         
-        # Get segment indices
-        q_seg_idx = torch.where(q_in_segment)[0]
-        kv_seg_idx = torch.where(kv_in_segment)[0]
+        # Check if both are in same segment
+        same_segment = (q_in_segment & kv_in_segment).any()
         
-        # If either index is not in any segment, block
-        if len(q_seg_idx) == 0 or len(kv_seg_idx) == 0:
-            return torch.tensor(False, device=device)
+        # For complex rules, we need to build a mask using tensor operations
+        # Strategy: Build up conditions as tensors, combine with logical ops
         
-        q_seg = q_seg_idx[0].item()
-        kv_seg = kv_seg_idx[0].item()
+        # Create metadata lookup tensors (convert segment_metadata to tensors)
+        # This avoids .item() calls and Python control flow
+        num_segs = len(segment_metadata)
         
-        # Get metadata for these segments
-        q_meta = segment_metadata[q_seg]
-        kv_meta = segment_metadata[kv_seg]
+        # Build metadata tensors for all segments
+        types_list = []
+        paras_list = []
+        fs_list = []
+        fs_q_para_list = []
         
-        q_type = q_meta['type']
-        kv_type = kv_meta['type']
-        q_para = q_meta['paraphrase_idx']
-        kv_para = kv_meta['paraphrase_idx']
-        q_fs = q_meta['few_shot_idx']
-        kv_fs = kv_meta['few_shot_idx']
-        q_fs_q_para = q_meta.get('fs_q_para_idx')
-        kv_fs_q_para = kv_meta.get('fs_q_para_idx')
+        for seg_meta in segment_metadata:
+            # Map types to integers for tensor operations
+            type_map = {'instruction': 0, 'few_shot_q': 1, 'few_shot_a': 2, 'question': 3}
+            types_list.append(type_map.get(seg_meta['type'], -1))
+            paras_list.append(seg_meta['paraphrase_idx'] if seg_meta['paraphrase_idx'] is not None else -1)
+            fs_list.append(seg_meta['few_shot_idx'] if seg_meta['few_shot_idx'] is not None else -1)
+            fs_q_para_list.append(seg_meta.get('fs_q_para_idx', -1) if seg_meta.get('fs_q_para_idx') is not None else -1)
         
-        # Apply masking rules (UPDATED for new format)
-        # NOTE: Causal constraint already enforced above, so we only return True/False here
+        seg_types = torch.tensor(types_list, dtype=torch.int64, device=device)
+        seg_paras = torch.tensor(paras_list, dtype=torch.int64, device=device)
+        seg_fs = torch.tensor(fs_list, dtype=torch.int64, device=device)
+        seg_fs_q_para = torch.tensor(fs_q_para_list, dtype=torch.int64, device=device)
         
-        # Rule: Instruction can attend to itself
-        if q_type == 'instruction' and kv_type == 'instruction':
-            return torch.tensor(True, device=device)
+        # Get query and kv segment metadata using tensor indexing
+        # For each position, find which segment it belongs to using argmax on q_in_segment
+        # If no segment found, will be index 0 but we'll handle with validity check
+        q_seg_idx = torch.argmax(q_in_segment.to(torch.int64))
+        kv_seg_idx = torch.argmax(kv_in_segment.to(torch.int64))
         
-        # Rule: All segments can attend to instruction
-        if kv_type == 'instruction':
-            return torch.tensor(True, device=device)
+        # Check if indices are valid (actually found a segment)
+        q_valid = q_in_segment.any()
+        kv_valid = kv_in_segment.any()
+        both_valid = q_valid & kv_valid
         
-        # Rule: Few-shot answers have normal causal mask
-        if q_type == 'few_shot_a':
-            # Answer can attend to ALL question paraphrases of its own few-shot
-            if kv_type == 'few_shot_q' and q_para == kv_para and q_fs == kv_fs:
-                return torch.tensor(True, device=device)
-            # Answer can attend to other few-shot questions from different few-shot examples
-            elif kv_type == 'few_shot_q' and q_fs != kv_fs:
-                return torch.tensor(True, device=device)
-            # Answer can attend to other few-shot answers
-            elif kv_type == 'few_shot_a':
-                # Different few-shot - can attend
-                if q_fs != kv_fs:
-                    return torch.tensor(True, device=device)
-                # Same segment - can attend
-                elif q_seg == kv_seg:
-                    return torch.tensor(True, device=device)
-            return torch.tensor(False, device=device)
+        # Get metadata for query and kv segments
+        q_type = seg_types[q_seg_idx]
+        kv_type = seg_types[kv_seg_idx]
+        q_para = seg_paras[q_seg_idx]
+        kv_para = seg_paras[kv_seg_idx]
+        q_fs = seg_fs[q_seg_idx]
+        kv_fs = seg_fs[kv_seg_idx]
+        q_fs_q_para_idx = seg_fs_q_para[q_seg_idx]
+        kv_fs_q_para_idx = seg_fs_q_para[kv_seg_idx]
         
-        # Rule: Few-shot questions - NEW complex paraphrase rules
-        if q_type == 'few_shot_q' and kv_type == 'few_shot_q':
-            # Same few-shot, same main paraphrase, same fs_q_para - can attend
-            if q_fs == kv_fs and q_para == kv_para and q_fs_q_para == kv_fs_q_para:
-                return torch.tensor(True, device=device)
-            # Same few-shot, same main paraphrase, different fs_q_para - CANNOT attend
-            elif q_fs == kv_fs and q_para == kv_para and q_fs_q_para != kv_fs_q_para:
-                return torch.tensor(False, device=device)
-            # Different few-shot - CAN attend
-            elif q_fs != kv_fs:
-                return torch.tensor(True, device=device)
-            # Same few-shot, different main paraphrase - CANNOT attend
-            elif q_fs == kv_fs and q_para != kv_para:
-                return torch.tensor(False, device=device)
-            return torch.tensor(False, device=device)
+        # Build up the masking logic using pure tensor operations
+        # Type constants for comparison
+        INST = torch.tensor(0, device=device, dtype=torch.int64)
+        FS_Q = torch.tensor(1, device=device, dtype=torch.int64)
+        FS_A = torch.tensor(2, device=device, dtype=torch.int64)
+        QUES = torch.tensor(3, device=device, dtype=torch.int64)
         
-        # Rule: Few-shot questions can attend to few-shot answers
-        if q_type == 'few_shot_q' and kv_type == 'few_shot_a':
-            # Different few-shot - can attend
-            if q_fs != kv_fs:
-                return torch.tensor(True, device=device)
-            # Same few-shot, same main paraphrase - cannot attend (Q comes before A)
-            elif q_fs == kv_fs and q_para == kv_para:
-                return torch.tensor(False, device=device)
-            return torch.tensor(False, device=device)
+        # Rule 1: Instruction <-> Instruction
+        inst_to_inst = (q_type == INST) & (kv_type == INST)
         
-        # Rule: Question paraphrases are isolated from each other
-        if q_type == 'question' and kv_type == 'question':
-            # Same paraphrase - can attend
-            if q_para == kv_para:
-                return torch.tensor(True, device=device)
-            # Different paraphrase - CANNOT attend
-            else:
-                return torch.tensor(False, device=device)
+        # Rule 2: Any -> Instruction
+        any_to_inst = (kv_type == INST)
         
-        # Rule: Questions can attend to few-shot examples
-        if q_type == 'question' and (kv_type == 'few_shot_q' or kv_type == 'few_shot_a'):
-            return torch.tensor(True, device=device)
+        # Rule 3: Few-shot answer rules
+        fs_a_to_own_qs = (q_type == FS_A) & (kv_type == FS_Q) & (q_para == kv_para) & (q_fs == kv_fs)
+        fs_a_to_diff_fs_q = (q_type == FS_A) & (kv_type == FS_Q) & (q_fs != kv_fs)
+        fs_a_to_diff_fs_a = (q_type == FS_A) & (kv_type == FS_A) & (q_fs != kv_fs)
+        fs_a_to_same_seg_a = (q_type == FS_A) & (kv_type == FS_A) & same_segment
         
-        # Default: allow if same segment
-        same_segment = q_seg == kv_seg
-        return torch.tensor(same_segment, device=device)
+        # Rule 4: Few-shot question paraphrase rules
+        fs_q_same_all = (q_type == FS_Q) & (kv_type == FS_Q) & (q_fs == kv_fs) & (q_para == kv_para) & (q_fs_q_para_idx == kv_fs_q_para_idx)
+        fs_q_diff_fs = (q_type == FS_Q) & (kv_type == FS_Q) & (q_fs != kv_fs)
+        
+        # Rule 5: Question paraphrase rules
+        ques_same_para = (q_type == QUES) & (kv_type == QUES) & (q_para == kv_para)
+        
+        # Rule 6: Question -> Few-shot
+        ques_to_fs = (q_type == QUES) & ((kv_type == FS_Q) | (kv_type == FS_A))
+        
+        # Combine all allow rules
+        custom_allow = (
+            inst_to_inst |
+            any_to_inst |
+            fs_a_to_own_qs |
+            fs_a_to_diff_fs_q |
+            fs_a_to_diff_fs_a |
+            fs_a_to_same_seg_a |
+            fs_q_same_all |
+            fs_q_diff_fs |
+            ques_same_para |
+            ques_to_fs |
+            same_segment  # Default: same segment allowed
+        )
+        
+        # Final result: causal AND (generated OR custom_allow) AND both_valid
+        result = causal_mask & (is_generated | (both_valid & custom_allow))
+        
+        return result
     
     return mask_mod
 
