@@ -615,7 +615,9 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
             same_segment  # Default: same segment allowed
         )
         
-        # Final result: causal AND (generated OR custom_allow) AND both_valid
+        # Final result: causal AND (generated OR (valid custom_allow))
+        # If query is generated, allow all causal attention
+        # Otherwise, only allow if both positions are valid AND custom rules allow
         result = causal_mask & (is_generated | (both_valid & custom_allow))
         
         return result
@@ -813,6 +815,8 @@ def myriadlama_flex_generation(prompt, max_new_tokens=10):
         except Exception as e:
             import traceback
             print(f"⚠️  Generation step {step} failed: {type(e).__name__}: {e}")
+            print(f"    Traceback:")
+            traceback.print_exc()
             print(f"    Falling back to unpatched model...")
             flex_wrapper.unpatch_model()
             logits = model(inputs["input_ids"]).logits[:, -1, :]
@@ -829,15 +833,23 @@ def myriadlama_flex_generation(prompt, max_new_tokens=10):
         else:
             generated = torch.cat([generated, next_token], dim=1)
         
+        # Debug: show what was generated
+        decoded_token = tokenizer.decode(next_token[0], skip_special_tokens=False)
+        print(f"  Step {step}: generated token '{decoded_token}' (id: {next_token.item()})")
+        
         # Check for EOS or newline (likely end of one-word answer)
         if next_token.item() == tokenizer.eos_token_id:
+            print(f"  Stopped: EOS token")
             break
         # Also check if we generated a newline or space (end of word)
-        decoded = tokenizer.decode(next_token[0], skip_special_tokens=False)
-        if '\n' in decoded and step > 0:  # Allow at least one token
+        if '\n' in decoded_token and step > 0:  # Allow at least one token
+            print(f"  Stopped: newline detected")
             break
     
     # Decode output
+    if generated is None:
+        print("⚠️  Warning: No tokens generated")
+        return ""
     generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
     return generated_texts[0].strip()
 
