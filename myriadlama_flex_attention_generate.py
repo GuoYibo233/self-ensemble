@@ -920,6 +920,12 @@ if __name__ == "__main__":
         
         df = append_lemmas(df, results)
         df.to_feather(dump_file)
+        
+        # Convert to CSV automatically
+        csv_file = dump_file.replace('.feather', '.csv')
+        df.to_csv(csv_file, index=False)
+        print(f"✅ CSV file saved to {csv_file}")
+        
         exit(0)
     
     if os.path.exists(dump_file):
@@ -1011,3 +1017,8 @@ if __name__ == "__main__":
     # Save results
     df.to_feather(dump_file)
     print(f"✅ Results saved to {dump_file}")
+    
+    # Convert to CSV automatically
+    csv_file = dump_file.replace('.feather', '.csv')
+    df.to_csv(csv_file, index=False)
+    print(f"✅ CSV file saved to {csv_file}")
