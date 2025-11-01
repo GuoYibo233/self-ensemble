@@ -498,8 +498,9 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         """
         Mask function for MyriadLAMA FlexAttention with complex rules.
         
-        Logic:
-        1. Always enforce causal constraint (cannot attend to future)
+        Logic (PRIORITY ORDER):
+        1. HIGHEST PRIORITY: Causal constraint (cannot attend to future)
+           - If kv_idx > q_idx, immediately return False
         2. Generated tokens (>= original_length) attend to all previous tokens
         3. Within encoding phase, apply complex rules based on segment types
         """
@@ -508,11 +509,16 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         seg_starts = segment_starts.to(device)
         seg_ends = segment_ends.to(device)
         
-        # Causal constraint - cannot attend to future
+        # HIGHEST PRIORITY: Causal constraint - cannot attend to future
+        # If violates causality, immediately block (don't waste time on other checks)
         causal_mask = q_idx >= kv_idx
+        if not causal_mask:
+            return torch.tensor(False, device=device)
         
         # If query is in generation phase, allow attention to all previous tokens
         is_generated = q_idx >= original_length
+        if is_generated:
+            return torch.tensor(True, device=device)
         
         # Find which segment the query and key belong to
         q_in_segment = (q_idx >= seg_starts) & (q_idx < seg_ends)
@@ -522,9 +528,9 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         q_seg_idx = torch.where(q_in_segment)[0]
         kv_seg_idx = torch.where(kv_in_segment)[0]
         
-        # If either index is not in any segment, default to False
+        # If either index is not in any segment, block
         if len(q_seg_idx) == 0 or len(kv_seg_idx) == 0:
-            return causal_mask & torch.tensor(False, device=device)
+            return torch.tensor(False, device=device)
         
         q_seg = q_seg_idx[0].item()
         kv_seg = kv_seg_idx[0].item()
@@ -543,77 +549,76 @@ def create_myriadlama_mask(segment_positions, segment_metadata, original_length)
         kv_fs_q_para = kv_meta.get('fs_q_para_idx')
         
         # Apply masking rules (UPDATED for new format)
+        # NOTE: Causal constraint already enforced above, so we only return True/False here
         
         # Rule: Instruction can attend to itself
         if q_type == 'instruction' and kv_type == 'instruction':
-            return causal_mask & torch.tensor(True, device=device)
+            return torch.tensor(True, device=device)
         
         # Rule: All segments can attend to instruction
         if kv_type == 'instruction':
-            return causal_mask & torch.tensor(True, device=device)
+            return torch.tensor(True, device=device)
         
         # Rule: Few-shot answers have normal causal mask
         if q_type == 'few_shot_a':
             # Answer can attend to ALL question paraphrases of its own few-shot
             if kv_type == 'few_shot_q' and q_para == kv_para and q_fs == kv_fs:
-                return causal_mask & torch.tensor(True, device=device)
+                return torch.tensor(True, device=device)
             # Answer can attend to other few-shot questions from different few-shot examples
             elif kv_type == 'few_shot_q' and q_fs != kv_fs:
-                return causal_mask & torch.tensor(True, device=device)
+                return torch.tensor(True, device=device)
             # Answer can attend to other few-shot answers
             elif kv_type == 'few_shot_a':
                 # Different few-shot - can attend
                 if q_fs != kv_fs:
-                    return causal_mask & torch.tensor(True, device=device)
-                # Same segment - can attend (causal)
+                    return torch.tensor(True, device=device)
+                # Same segment - can attend
                 elif q_seg == kv_seg:
-                    return causal_mask & torch.tensor(True, device=device)
-            return causal_mask & torch.tensor(False, device=device)
+                    return torch.tensor(True, device=device)
+            return torch.tensor(False, device=device)
         
         # Rule: Few-shot questions - NEW complex paraphrase rules
         if q_type == 'few_shot_q' and kv_type == 'few_shot_q':
-            # Same few-shot, same main paraphrase, same fs_q_para - can attend (causal)
+            # Same few-shot, same main paraphrase, same fs_q_para - can attend
             if q_fs == kv_fs and q_para == kv_para and q_fs_q_para == kv_fs_q_para:
-                return causal_mask & torch.tensor(True, device=device)
+                return torch.tensor(True, device=device)
             # Same few-shot, same main paraphrase, different fs_q_para - CANNOT attend
             elif q_fs == kv_fs and q_para == kv_para and q_fs_q_para != kv_fs_q_para:
-                return causal_mask & torch.tensor(False, device=device)
+                return torch.tensor(False, device=device)
             # Different few-shot - CAN attend
             elif q_fs != kv_fs:
-                return causal_mask & torch.tensor(True, device=device)
+                return torch.tensor(True, device=device)
             # Same few-shot, different main paraphrase - CANNOT attend
             elif q_fs == kv_fs and q_para != kv_para:
-                return causal_mask & torch.tensor(False, device=device)
-            return causal_mask & torch.tensor(False, device=device)
+                return torch.tensor(False, device=device)
+            return torch.tensor(False, device=device)
         
         # Rule: Few-shot questions can attend to few-shot answers
         if q_type == 'few_shot_q' and kv_type == 'few_shot_a':
             # Different few-shot - can attend
             if q_fs != kv_fs:
-                return causal_mask & torch.tensor(True, device=device)
+                return torch.tensor(True, device=device)
             # Same few-shot, same main paraphrase - cannot attend (Q comes before A)
             elif q_fs == kv_fs and q_para == kv_para:
-                return causal_mask & torch.tensor(False, device=device)
-            return causal_mask & torch.tensor(False, device=device)
+                return torch.tensor(False, device=device)
+            return torch.tensor(False, device=device)
         
         # Rule: Question paraphrases are isolated from each other
         if q_type == 'question' and kv_type == 'question':
-            # Same paraphrase - can attend (causal)
+            # Same paraphrase - can attend
             if q_para == kv_para:
-                return causal_mask & torch.tensor(True, device=device)
+                return torch.tensor(True, device=device)
             # Different paraphrase - CANNOT attend
             else:
-                return causal_mask & torch.tensor(False, device=device)
+                return torch.tensor(False, device=device)
         
         # Rule: Questions can attend to few-shot examples
         if q_type == 'question' and (kv_type == 'few_shot_q' or kv_type == 'few_shot_a'):
-            return causal_mask & torch.tensor(True, device=device)
+            return torch.tensor(True, device=device)
         
         # Default: allow if same segment
         same_segment = q_seg == kv_seg
-        result = causal_mask & torch.tensor(same_segment, device=device)
-        
-        return result
+        return torch.tensor(same_segment, device=device)
     
     return mask_mod
 
