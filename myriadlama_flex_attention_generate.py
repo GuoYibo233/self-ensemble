@@ -901,7 +901,7 @@ def format_debug_info(database_data, prompt, attention_mask_viz, output):
 # ==============================================================================
 
 @torch.no_grad()
-def myriadlama_flex_generation(prompt, max_new_tokens=10, debug_info=None):
+def myriadlama_flex_generation(prompt, max_new_tokens=10, debug_info=None, use_flex_attention=True):
     """
     Generate text using FlexAttention for MyriadLAMA.
     
@@ -916,6 +916,7 @@ def myriadlama_flex_generation(prompt, max_new_tokens=10, debug_info=None):
         prompt: Single prompt string with ALL paraphrases
         max_new_tokens: Maximum tokens to generate (default: 10 for one-word answers)
         debug_info: Optional dict for debug output, if provided will populate with debug data
+        use_flex_attention: Whether to use FlexAttention (True) or normal causal attention (False)
         
     Returns:
         Generated text string
@@ -945,8 +946,8 @@ def myriadlama_flex_generation(prompt, max_new_tokens=10, debug_info=None):
         add_special_tokens=True
     ).to(model.device)
     
-    # Create FlexAttention wrapper
-    flex_wrapper = FlexAttentionWrapper(model)
+    # Create FlexAttention wrapper (only if using flex attention)
+    flex_wrapper = FlexAttentionWrapper(model) if use_flex_attention else None
     
     generated = None
     
@@ -954,15 +955,16 @@ def myriadlama_flex_generation(prompt, max_new_tokens=10, debug_info=None):
     for step in range(max_new_tokens):
         current_length = inputs["input_ids"].shape[1]
         
-        # Create simplified mask for MyriadLAMA
-        mask_mod = create_myriadlama_mask(
-            segment_positions,
-            segment_metadata,
-            original_length
-        )
-        
-        # Patch model with FlexAttention
-        flex_wrapper.patch_model(mask_mod)
+        if use_flex_attention:
+            # Create simplified mask for MyriadLAMA
+            mask_mod = create_myriadlama_mask(
+                segment_positions,
+                segment_metadata,
+                original_length
+            )
+            
+            # Patch model with FlexAttention
+            flex_wrapper.patch_model(mask_mod)
         
         try:
             # Forward pass
@@ -972,12 +974,16 @@ def myriadlama_flex_generation(prompt, max_new_tokens=10, debug_info=None):
             print(f"⚠️  Generation step {step} failed: {type(e).__name__}: {e}")
             print(f"    Traceback:")
             traceback.print_exc()
-            print(f"    Falling back to unpatched model...")
-            flex_wrapper.unpatch_model()
-            logits = model(inputs["input_ids"]).logits[:, -1, :]
+            if use_flex_attention:
+                print(f"    Falling back to unpatched model...")
+                flex_wrapper.unpatch_model()
+                logits = model(inputs["input_ids"]).logits[:, -1, :]
+            else:
+                raise
         finally:
-            # Always unpatch after each step
-            flex_wrapper.unpatch_model()
+            # Always unpatch after each step (if using flex attention)
+            if use_flex_attention:
+                flex_wrapper.unpatch_model()
         
         # Token selection
         next_token = torch.argmax(logits, dim=-1).unsqueeze(1)
@@ -1032,13 +1038,18 @@ if __name__ == "__main__":
         "--max_samples", type=int, default=None,
         help="Maximum number of samples to generate (default: None, process all)"
     )
+    parser.add_argument(
+        "--use_normal_attention", action="store_true",
+        help="Use normal causal attention instead of FlexAttention (default: False, use FlexAttention)"
+    )
     args = parser.parse_args()
     
-    # Check FlexAttention availability
-    if not FLEX_ATTENTION_AVAILABLE:
-        print("❌ FlexAttention is required for this script.")
+    # Check FlexAttention availability only if not using normal attention
+    if not args.use_normal_attention and not FLEX_ATTENTION_AVAILABLE:
+        print("❌ FlexAttention is required for this script (unless --use_normal_attention is specified).")
         print("   Please install PyTorch 2.5+ or nightly:")
         print("   pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121")
+        print("   Or use --use_normal_attention flag to use normal causal attention")
         exit(1)
     
     # Load MyriadLAMA dataset
@@ -1103,7 +1114,10 @@ if __name__ == "__main__":
     # Print model info
     print(f"🔍 Model: {args.model}")
     print(f"   PyTorch version: {torch.__version__}")
-    print(f"   Using MyriadLAMA-specific FlexAttention")
+    if args.use_normal_attention:
+        print(f"   Using NORMAL causal attention")
+    else:
+        print(f"   Using MyriadLAMA-specific FlexAttention")
     print(f"   Using {args.num_paraphrases} paraphrases per question")
     if hasattr(model.config, 'num_attention_heads'):
         print(f"   Attention heads: {model.config.num_attention_heads}")
@@ -1113,7 +1127,9 @@ if __name__ == "__main__":
         "uuid", "answers", "prediction", "generation", "templates",
         "debug_database", "debug_prompt", "debug_mask", "debug_output"
     ])
-    print(f"\nMyriadLAMA FlexAttention generation")
+    
+    attention_mode = "Normal Causal Attention" if args.use_normal_attention else "FlexAttention"
+    print(f"\nMyriadLAMA generation with {attention_mode}")
     if args.max_samples:
         print(f"Processing maximum {args.max_samples} samples")
     
@@ -1157,11 +1173,12 @@ if __name__ == "__main__":
             # Prepare debug info container
             debug_info = {} if sample_count < 5 else None
             
-            # Generate using MyriadLAMA-specific FlexAttention
+            # Generate using MyriadLAMA-specific FlexAttention or normal attention
             generation = myriadlama_flex_generation(
                 prompt,  # Single prompt with all paraphrases
                 max_new_tokens=10,
-                debug_info=debug_info
+                debug_info=debug_info,
+                use_flex_attention=not args.use_normal_attention
             )
             
             # Extract prediction (first word only for MyriadLAMA)
