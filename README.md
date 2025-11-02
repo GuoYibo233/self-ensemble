@@ -121,23 +121,38 @@ For detailed setup instructions, see **[docs/QUICKSTART.md](docs/QUICKSTART.md)*
 
 ## 📖 Usage
 
+### Interactive Mode (Recommended)
+
+Run generation scripts interactively with guided prompts:
+
+```bash
+python src/run_interactive.py
+```
+
+This will guide you through selecting:
+- Generation type (original, flex_attention, myriadlama, baseline)
+- Dataset (webqa, myriadlama)
+- Model (from available models)
+- Method-specific parameters
+- Optional parameters
+
 ### Baseline Generation
 
 ```bash
 # Baseline 1: Original questions only (attention mode baseline)
-python3 baseline_generate.py \
+python src/generate_baseline.py \
     --method origin \
     --dataset webqa \
     --model llama3.2_3b_it
 
 # Baseline 2: Each paraphrase separately (second baseline for attention mode)
-python3 baseline_generate.py \
+python src/generate_baseline.py \
     --method per_prompt \
     --dataset webqa \
     --model llama3.2_3b_it
 
 # Generate both baselines
-python3 baseline_generate.py \
+python src/generate_baseline.py \
     --method all \
     --dataset webqa \
     --model llama3.2_3b_it
@@ -148,21 +163,27 @@ For detailed baseline usage, see **[BASELINE_USAGE.md](BASELINE_USAGE.md)**.
 ### Ensemble Generation
 
 ```bash
-# Ensemble methods: max, avg, weighted_avg, weighted_max
-python3 generate.py \
+# Original ensemble methods: max, avg, weighted_avg, weighted_max
+python src/generate_original.py \
     --method max \
     --dataset webqa \
     --model llama3.2_3b_it \
     --num_ensemble 6
 
 # FlexAttention with 5 paraphrases (most efficient)
-python3 flex_attention_generate.py \
+python src/generate_flex_attention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --num_paraphrases 5
 
+# MyriadLAMA-specific FlexAttention
+python src/generate_myriadlama.py \
+    --dataset myriadlama \
+    --model llama3.2_3b_it \
+    --num_paraphrases 5
+
 # Limit to 100 samples for quick testing
-python3 flex_attention_generate.py \
+python src/generate_flex_attention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
     --num_paraphrases 5 \
@@ -243,14 +264,23 @@ Run the validation and example scripts:
 
 ```bash
 # Validate environment
-python3 tools/validate_flexattention_env.py --test-flex-attention
+python tools/validate_flexattention_env.py --test-flex-attention
 
 # Run minimal example
-python3 tools/example_flexattention.py
+python tools/example_flexattention.py
+
+# Run test scripts
+python tests/test_causal_priority.py
+python tests/test_paraphrase_isolation.py
 
 # Test notebooks (requires Jupyter)
-jupyter notebook test/test_generate.ipynb
+jupyter notebook tests/test_generate.ipynb
+
+# Analysis notebooks
+jupyter notebook notebooks/flexattention_analysis.ipynb
 ```
+
+See **[tests/README.md](tests/README.md)** for more details on testing.
 
 ## 📊 Datasets
 
@@ -281,45 +311,53 @@ bash tools/download_resources.sh --model llama3.2_3b_it
 
 ```
 .
-├── baseline_generate.py           # NEW: Baseline generation script
-├── flex_attention_generate.py    # FlexAttention implementation
-├── generate.py                    # Original ensemble methods
-├── dataset.py                     # Dataset loading
-├── constants.py                   # Configuration
-├── requirements.txt               # Python dependencies
-├── environment.yml                # Conda environment file (general)
-├── environment_linux.yml          # Linux-specific environment (Ubuntu 22.04, CUDA 12.1)
+├── src/                            # Source code and generation scripts
+│   ├── core/                       # Shared utilities and modules
+│   │   ├── constants.py            # Model paths and configurations
+│   │   ├── dataset.py              # Dataset loaders
+│   │   ├── utils.py                # General utilities
+│   │   ├── paraphrase.py           # Paraphrase generation
+│   │   ├── confidence.py           # Confidence computation
+│   │   └── interactive.py          # Interactive parameter prompts
+│   │
+│   ├── generate_original.py        # Original ensemble methods
+│   ├── generate_flex_attention.py  # FlexAttention-based generation
+│   ├── generate_myriadlama.py      # MyriadLAMA-specific generation
+│   ├── generate_baseline.py        # Baseline generation
+│   ├── run_interactive.py          # Interactive mode with prompts
+│   └── README.md                   # Source code documentation
 │
-├── tools/                         # Debugging and utilities
-│   ├── validate_flexattention_env.py  # Environment validation
-│   ├── debug_flexattention.py         # Debugging script
-│   ├── example_flexattention.py       # Minimal examples
-│   └── download_resources.sh          # Resource downloader
+├── tests/                          # Test scripts and notebooks
+│   ├── test_*.py                   # Unit tests
+│   ├── *.ipynb                     # Test notebooks
+│   └── README.md                   # Test documentation
 │
-├── analysis/                      # Analysis tools
-│   ├── analyze_baseline.py        # NEW: Baseline analysis
-│   ├── analyze_flexattention.py   # FlexAttention analysis
-│   ├── flexattention_analysis.ipynb   # Interactive analysis notebook
-│   └── [other analysis notebooks]
+├── notebooks/                      # Analysis and visualization notebooks
+│   ├── flexattention_analysis.ipynb
+│   ├── diversity.ipynb
+│   └── README.md                   # Notebook documentation
+│
+├── tools/                          # Debugging and validation utilities
+│   ├── validate_flexattention_env.py
+│   ├── debug_flexattention.py
+│   ├── example_flexattention.py
+│   └── download_resources.sh
+│
+├── analysis/                       # Analysis scripts
+│   ├── analyze_baseline.py
+│   └── analyze_flexattention.py
 │
 ├── docs/                          # Documentation
 │   ├── QUICKSTART.md              # Quick start guide
-│   ├── LINUX_SETUP.md             # Linux-specific setup guide
-│   ├── DELEGATE_PROMPT.md         # Complete debugging guide
 │   ├── README_FLEXATTENTION.md    # FlexAttention overview
-│   ├── QUICK_REFERENCE.md         # API reference
-│   ├── IMPROVEMENTS.md            # NEW: Consolidated improvements
-│   ├── FLEX_ATTENTION_IMPLEMENTATION.md  # Technical details
-│   └── ARCHITECTURE.md            # Architecture diagrams
+│   ├── ARCHITECTURE.md            # Architecture diagrams
+│   └── [other documentation]
 │
-├── BASELINE_USAGE.md              # NEW: Baseline generation guide
-├── FLEXATTENTION_USAGE.md         # FlexAttention usage guide
-├── CHANGELOG.md                   # All changes and updates
-│
-└── test/                          # Test notebooks
-    ├── test_generate.ipynb
-    ├── test_dataset.ipynb
-    └── ...
+├── plot/                          # Visualization tools and outputs
+├── examples/                      # Example scripts
+├── requirements.txt               # Python dependencies
+├── environment.yml                # Conda environment file
+└── README.md                      # This file
 ```
 
 ## 🔍 How It Works
