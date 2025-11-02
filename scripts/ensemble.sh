@@ -18,10 +18,10 @@ fi
 
 for num_ensemble in $(seq 2 $RANGE)
 do
-    CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method max 
-    CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method avg 
+    CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method max 
+    CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method avg 
     if [ "$USE_CONF" = "true" ]; then
-        CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method weighted_avg 
-        CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method weighted_max 
+        CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method weighted_avg 
+        CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --num_ensemble $num_ensemble --method weighted_max 
     fi
 done

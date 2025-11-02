@@ -98,7 +98,7 @@ generate_baseline() {
     fi
     
     # Build command
-    CMD="python3 $PROJECT_ROOT/baseline_generate.py --method all --dataset $dataset --model $model $REWRITE_FLAG"
+    CMD="python3 $PROJECT_ROOT/src/generate_baseline.py --method all --dataset $dataset --model $model $REWRITE_FLAG"
     
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}[DRY RUN] Would execute:${NC}"
