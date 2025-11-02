@@ -13,9 +13,9 @@ PARAPHRASE_PID=$!
     
 wait $PARAPHRASE_PID
 CUDA_VISIBLE_DEVICES=$GPU0 python3 confidence.py --model $MODEL_NAME &
-CUDA_VISIBLE_DEVICES=$GPU1 python3 generate.py --model $MODEL_NAME --method per_prompt &
-CUDA_VISIBLE_DEVICES=$GPU2 python3 generate.py --model $MODEL_NAME --method max &
-CUDA_VISIBLE_DEVICES=$GPU3 python3 generate.py --model $MODEL_NAME --method avg
+CUDA_VISIBLE_DEVICES=$GPU1 python3 ../src/generate_original.py --model $MODEL_NAME --method per_prompt &
+CUDA_VISIBLE_DEVICES=$GPU2 python3 ../src/generate_original.py --model $MODEL_NAME --method max &
+CUDA_VISIBLE_DEVICES=$GPU3 python3 ../src/generate_original.py --model $MODEL_NAME --method avg
 wait
 
 

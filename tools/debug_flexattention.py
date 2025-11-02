@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import numpy as np
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from constants import MODEL_PATHs
+from src.core.constants import MODEL_PATHs
 
 # Try to import FlexAttention
 try:
@@ -516,10 +516,10 @@ def main():
     # Load dataset
     print_section("Loading Dataset")
     if args.dataset == "webqa":
-        from dataset import WebQADataset
+        from src.core.dataset import WebQADataset
         dataset = WebQADataset(model_name=args.model)
     elif args.dataset == "myriadlama":
-        from dataset import MyriadLamaDataset
+        from src.core.dataset import MyriadLamaDataset
         dataset = MyriadLamaDataset(model_name=args.model)
     else:
         raise ValueError("Unsupported dataset")

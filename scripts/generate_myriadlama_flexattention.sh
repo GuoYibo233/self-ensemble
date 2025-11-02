@@ -121,7 +121,7 @@ for model in "${MODELS[@]}"; do
     fi
     
     # Build command
-    CMD="python3 $PROJECT_ROOT/flex_attention_generate.py --dataset myriadlama --model $model --num_paraphrases 5 --lemmaize"
+    CMD="python3 $PROJECT_ROOT/src/generate_flex_attention.py --dataset myriadlama --model $model --num_paraphrases 5 --lemmaize"
     
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}[DRY RUN] Would execute:${NC}"

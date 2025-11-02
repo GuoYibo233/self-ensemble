@@ -38,8 +38,8 @@ fi
 
 for index in "${INDEXS[@]}"
 do
-    # CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method max 
-    # CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method avg 
-    CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method weighted_avg 
-    # CUDA_VISIBLE_DEVICES=$GPU python3 generate.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method weighted_max 
+    # CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method max 
+    # CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method avg 
+    CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method weighted_avg 
+    # CUDA_VISIBLE_DEVICES=$GPU python3 ../src/generate_original.py --model $MODEL_NAME --dataset $DATASET --indexs $index --method weighted_max 
 done
