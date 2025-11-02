@@ -48,6 +48,11 @@ def analyze_flexattention_results(dataset_root, num_paraphrases=5):
     print(f"✅ Loading FlexAttention results: {flex_file}")
     df_flex = pd.read_feather(flex_file)
     
+    # Check for debug columns (new feature)
+    has_debug = 'debug_database' in df_flex.columns
+    if has_debug:
+        print(f"✅ Debug information available for first 5 samples")
+    
     # Process lemmas if available
     if "predict_lemma" in df_flex.columns and "answer_lemmas" in df_flex.columns:
         df_flex["answer_lemmas"] = df_flex["answer_lemmas"].apply(
@@ -75,6 +80,23 @@ def analyze_flexattention_results(dataset_root, num_paraphrases=5):
         print(f"    Answer: {df_flex.iloc[i]['answers']}")
         print(f"    Prediction: {df_flex.iloc[i]['prediction']}")
         print(f"    Generation: {df_flex.iloc[i]['generation'][:100]}...")
+        
+        # Show debug info if available
+        if has_debug and df_flex.iloc[i]['debug_database']:
+            print(f"    Debug available: Yes")
+    
+    # Show debug samples if available
+    if has_debug:
+        print(f"\n{'='*70}")
+        print("Debug Information (First Sample)")
+        print(f"{'='*70}")
+        if df_flex.iloc[0]['debug_database']:
+            print(f"\n[Database Data]")
+            print(df_flex.iloc[0]['debug_database'][:200] + "...")
+            print(f"\n[Prompt Preview]")
+            print(df_flex.iloc[0]['debug_prompt'][:200] + "...")
+            print(f"\n[Attention Mask Preview]")
+            print(df_flex.iloc[0]['debug_mask'][:300] + "...")
     
     # Compare with ensemble methods if available
     print(f"\n{'='*70}")

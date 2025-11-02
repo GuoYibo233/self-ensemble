@@ -255,7 +255,7 @@ class MyriadLamaDataset(ParaPharaseDataset):
     
     @property
     def instruction(self):
-        return "Predict the [MASK] in the sentence in one word."
+        return "Based on the context, predict the [MASK] in the sentence in one word. Do NOT use [MASK] in your answer."
     
     def load_dataset(self):
         if os.path.exists(self.dataset_path):
