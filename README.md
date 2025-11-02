@@ -42,6 +42,7 @@ This repository implements self-ensemble methods for natural language generation
 
 | Document | Description |
 |----------|-------------|
+| **[docs/README.md](docs/README.md)** | Documentation index and navigation |
 | **[docs/QUICKSTART.md](docs/QUICKSTART.md)** | 5-minute setup guide |
 | **[docs/LINUX_SETUP.md](docs/LINUX_SETUP.md)** | Linux-specific setup (Ubuntu 22.04, RTX A6000) |
 | **[docs/DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md)** | Complete debugging guide |
@@ -51,9 +52,10 @@ This repository implements self-ensemble methods for natural language generation
 | **[docs/CREATE_FLEX_ATTENTION_MASK_IMPLEMENTATION.md](docs/CREATE_FLEX_ATTENTION_MASK_IMPLEMENTATION.md)** | Mask function implementation guide |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Visual diagrams |
 | **[docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md)** | Component breakdown |
-| **[FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md)** | Usage guide with --max_samples and analysis tools |
-| **[IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md)** | Recent mask matrix & prompt formatting improvements |
-| **[docs/实现总结.md](docs/实现总结.md)** | Chinese summary |
+| **[docs/usage/FLEXATTENTION_USAGE.md](docs/usage/FLEXATTENTION_USAGE.md)** | FlexAttention usage guide |
+| **[docs/usage/BASELINE_USAGE.md](docs/usage/BASELINE_USAGE.md)** | Baseline generation guide |
+| **[docs/IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md)** | Implementation summary (English) |
+| **[docs/实现总结.md](docs/实现总结.md)** | Implementation summary (Chinese/English) |
 
 ## 🎯 What is FlexAttention Ensemble?
 
@@ -158,7 +160,7 @@ python src/generate_baseline.py \
     --model llama3.2_3b_it
 ```
 
-For detailed baseline usage, see **[BASELINE_USAGE.md](BASELINE_USAGE.md)**.
+For detailed baseline usage, see **[docs/usage/BASELINE_USAGE.md](docs/usage/BASELINE_USAGE.md)**.
 
 ### Ensemble Generation
 
@@ -208,7 +210,7 @@ python3 analysis/analyze_flexattention.py \
 jupyter notebook analysis/flexattention_analysis.ipynb
 ```
 
-For detailed usage and analysis guide, see **[FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md)**.
+For detailed usage and analysis guide, see **[docs/usage/FLEXATTENTION_USAGE.md](docs/usage/FLEXATTENTION_USAGE.md)**.
 
 ### Debugging
 
@@ -414,12 +416,13 @@ For more solutions, see **[docs/DELEGATE_PROMPT.md#troubleshooting](docs/DELEGAT
 ## 📝 Documentation Index
 
 **Getting Started:**
-- [BASELINE_USAGE.md](BASELINE_USAGE.md) - **NEW**: Baseline generation guide
+- [docs/README.md](docs/README.md) - **Documentation index** with complete navigation
+- [docs/usage/BASELINE_USAGE.md](docs/usage/BASELINE_USAGE.md) - Baseline generation guide
 - [docs/QUICKSTART.md](docs/QUICKSTART.md) - 5-minute setup
 - [docs/DELEGATE_PROMPT.md](docs/DELEGATE_PROMPT.md) - Complete guide
 
 **Understanding FlexAttention:**
-- [FLEXATTENTION_USAGE.md](FLEXATTENTION_USAGE.md) - Usage guide
+- [docs/usage/FLEXATTENTION_USAGE.md](docs/usage/FLEXATTENTION_USAGE.md) - Usage guide
 - [docs/README_FLEXATTENTION.md](docs/README_FLEXATTENTION.md) - Overview
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Visual diagrams
 - [docs/FLEX_ATTENTION_IMPLEMENTATION.md](docs/FLEX_ATTENTION_IMPLEMENTATION.md) - Technical details
@@ -429,8 +432,9 @@ For more solutions, see **[docs/DELEGATE_PROMPT.md#troubleshooting](docs/DELEGAT
 - [docs/REUSE_VS_NEW_DETAILED.md](docs/REUSE_VS_NEW_DETAILED.md) - Code breakdown
 
 **Development & Changes:**
-- [CHANGELOG.md](CHANGELOG.md) - All changes and updates
-- [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md) - **NEW**: Consolidated improvements
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) - All changes and updates
+- [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md) - Consolidated improvements
+- [docs/summaries/](docs/summaries/) - Project summaries and task completion
 
 **中文文档:**
 - [docs/实现总结.md](docs/实现总结.md) - 中文总结
