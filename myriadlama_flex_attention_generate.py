@@ -153,10 +153,9 @@ def construct_prompt_new_format(instruction, few_shot_examples, question_paraphr
     Q: {fs2_para3}
     A: {fs2_answer}
     
-    Q: {main_question_paraphrase1}
-    Q: {main_question_paraphrase2}
-    Q: {main_question_paraphrase3}
-    A:
+    Q: {main_question_paraphrase1} A:
+    Q: {main_question_paraphrase2} A:
+    Q: {main_question_paraphrase3} A:
     
     Args:
         instruction: Instruction string
@@ -178,11 +177,10 @@ def construct_prompt_new_format(instruction, few_shot_examples, question_paraphr
         fs_parts.append(f"A: {fs_example['answer']}")
         prompt_parts.append("\n".join(fs_parts))
     
-    # Add ALL main question paraphrases
+    # Add ALL main question paraphrases - EACH WITH ITS OWN A:
     main_q_parts = []
     for para in question_paraphrases:
-        main_q_parts.append(f"Q: {para}")
-    main_q_parts.append("A:")
+        main_q_parts.append(f"Q: {para} A:")
     prompt_parts.append("\n".join(main_q_parts))
     
     return "\n\n".join(prompt_parts)
@@ -209,15 +207,14 @@ def parse_prompt_segments_with_metadata_new_format(prompt):
     Q: {fs2_para3}
     A: {fs2_answer}
     
-    Q: {main_question_para1}
-    Q: {main_question_para2}
-    Q: {main_question_para3}
-    A:
+    Q: {main_question_para1} A:
+    Q: {main_question_para2} A:
+    Q: {main_question_para3} A:
     
     Returns segments with metadata to enable proper masking:
     - Each Q paraphrase in a few-shot example is a separate segment
     - The A in a few-shot example is a separate segment
-    - Each main question paraphrase is a separate segment
+    - Each main question paraphrase WITH ITS A: is a separate segment
     
     Args:
         prompt: Single prompt string (with all main question paraphrases)
@@ -257,11 +254,20 @@ def parse_prompt_segments_with_metadata_new_format(prompt):
             
         lines = section.strip().split('\n')
         
-        # Check if this section ends with "A:" (main question) or "A: {answer}" (few-shot)
-        has_answer_value = any(line.startswith("A:") and len(line) > 2 for line in lines)
+        # Detect section type:
+        # - Few-shot: has Q: lines followed by separate "A: {answer}" line
+        # - Main question: has "Q: ... A:" lines (A: is on same line as Q:)
         
-        if has_answer_value:
-            # This is a few-shot example with multiple Q paraphrases + one A
+        # Check if all Q: lines have A: on the same line (main question format)
+        q_lines = [line for line in lines if line.startswith("Q:")]
+        all_q_have_a = all(" A:" in line for line in q_lines)
+        
+        # Check if there's a separate A: line with answer value
+        separate_a_lines = [line for line in lines if line.startswith("A:") and not line.startswith("Q:")]
+        has_separate_answer = any(len(line.strip()) > 2 for line in separate_a_lines)
+        
+        if has_separate_answer and not all_q_have_a:
+            # This is a few-shot example with multiple Q paraphrases + one separate A
             q_lines = [line for line in lines if line.startswith("Q:")]
             a_line = [line for line in lines if line.startswith("A:")][0]
             
@@ -290,10 +296,8 @@ def parse_prompt_segments_with_metadata_new_format(prompt):
             
             few_shot_count += 1
         else:
-            # This is the main question section with MULTIPLE Q paraphrases + A:
-            q_lines = [line for line in lines if line.startswith("Q:")]
-            
-            # Add each main question paraphrase as a segment
+            # This is the main question section with "Q: {para} A:" format
+            # Each line is a complete segment
             for main_q_para_idx, q_line in enumerate(q_lines):
                 segments.append((
                     q_line.strip(),
