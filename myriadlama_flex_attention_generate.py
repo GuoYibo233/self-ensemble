@@ -702,6 +702,8 @@ def visualize_attention_mask(segment_positions, segment_metadata, original_lengt
     """
     Visualize the attention mask structure for debugging.
     
+    Focus on main question paraphrases and their answer generation.
+    
     Args:
         segment_positions: List of (start, end) tuples
         segment_metadata: List of metadata dicts
@@ -719,43 +721,124 @@ def visualize_attention_mask(segment_positions, segment_metadata, original_lengt
     
     # Tokenize to get the actual tokens
     tokens = tokenizer.encode(sample_text, add_special_tokens=True)
-    seq_len = min(len(tokens), original_length)
-    
-    # Build a small visualization (limit to first 50 tokens for readability)
-    vis_len = min(seq_len, 50)
+    seq_len = len(tokens)
     
     lines = []
     lines.append(f"\n{'='*80}")
-    lines.append(f"ATTENTION MASK VISUALIZATION (first {vis_len} tokens)")
+    lines.append(f"ATTENTION MASK VISUALIZATION")
     lines.append(f"{'='*80}")
     lines.append(f"Total tokens: {len(tokens)}, Original length: {original_length}")
-    lines.append(f"\nSegments:")
+    
+    # Find main question segments
+    question_segments = []
+    instruction_end = 0
+    fewshot_end = 0
+    
     for i, (pos, meta) in enumerate(zip(segment_positions, segment_metadata)):
         start, end = pos
-        if start < vis_len:
-            lines.append(f"  [{i}] pos {start:3d}-{end:3d}: {meta['type']:15s} para_idx={meta['paraphrase_idx']}")
+        seg_type = meta['type']
+        
+        if seg_type == 'instruction':
+            instruction_end = end
+        elif seg_type in ['few_shot_q', 'few_shot_a']:
+            fewshot_end = max(fewshot_end, end)
+        elif seg_type == 'question':
+            question_segments.append((i, start, end, meta['paraphrase_idx']))
     
-    lines.append(f"\nMask Matrix (1=can attend, 0=cannot attend):")
-    lines.append(f"   Rows=Query, Cols=Key/Value")
+    lines.append(f"\nSegment Structure:")
+    lines.append(f"  Instruction: tokens 0-{instruction_end}")
+    lines.append(f"  Few-shot examples: tokens {instruction_end}-{fewshot_end} (pure causal attention)")
+    lines.append(f"  Main questions (ISOLATED):")
+    for seg_idx, start, end, para_idx in question_segments:
+        lines.append(f"    Q{para_idx}: tokens {start:3d}-{end:3d}")
     
-    # Create a small attention matrix visualization
-    # Show every 5th position to keep it readable
-    step = max(1, vis_len // 20)
-    show_positions = list(range(0, vis_len, step))
+    # Show detailed mask for MAIN QUESTION region only
+    if question_segments:
+        # Get the range covering all main questions
+        q_start = question_segments[0][1]
+        q_end = question_segments[-1][2]
+        
+        lines.append(f"\n{'='*80}")
+        lines.append(f"DETAILED MASK FOR MAIN QUESTION REGION (tokens {q_start}-{q_end})")
+        lines.append(f"{'='*80}")
+        lines.append(f"Legend: ✓ = can attend, ✗ = blocked (isolated)")
+        lines.append(f"Rows = Query position, Columns = Key/Value position")
+        
+        # Show every token in the question region
+        show_positions = list(range(q_start, min(q_end, seq_len)))
+        
+        # Add a few tokens before for context
+        context_before = max(0, q_start - 5)
+        context_positions = list(range(context_before, q_start))
+        
+        # Build header with segment markers
+        lines.append(f"\n    Position markers:")
+        for seg_idx, start, end, para_idx in question_segments:
+            lines.append(f"      Q{para_idx}: [{start:3d} - {end:3d})")
+        
+        # Create column header
+        header = "\n      "
+        for pos in context_positions + show_positions:
+            header += f"{pos%10}"
+        lines.append(header)
+        
+        # Divider
+        lines.append("    " + "-" * (len(context_positions) + len(show_positions) + 2))
+        
+        # Mask values for each query position in question region
+        b = torch.tensor(0)
+        h = torch.tensor(0)
+        
+        for q in show_positions:
+            # Determine which question segment this position belongs to
+            q_seg = "?"
+            for seg_idx, start, end, para_idx in question_segments:
+                if start <= q < end:
+                    q_seg = f"Q{para_idx}"
+                    break
+            
+            row = f"{q_seg:>3} {q:3d}│"
+            
+            for kv in context_positions + show_positions:
+                q_idx = torch.tensor(q)
+                kv_idx = torch.tensor(kv)
+                can_attend = mask_mod(b, h, q_idx, kv_idx).item()
+                row += "✓" if can_attend else "✗"
+            
+            lines.append(row)
+        
+        lines.append("")
+        lines.append("Note: Question paraphrases are MUTUALLY INVISIBLE")
+        lines.append("      Each Q can only attend to itself + earlier context (instruction, few-shot)")
+    
+    # Show a compact overview of the full sequence
+    lines.append(f"\n{'='*80}")
+    lines.append(f"COMPACT OVERVIEW - Full Sequence Mask Pattern")
+    lines.append(f"{'='*80}")
+    
+    # Sample positions across the full sequence
+    step = max(1, seq_len // 30)
+    sample_positions = list(range(0, min(seq_len, original_length), step))
+    
+    # Add key boundaries
+    key_positions = [0, instruction_end, fewshot_end]
+    for seg_idx, start, end, para_idx in question_segments:
+        key_positions.extend([start, end-1])
+    key_positions = sorted(set([p for p in key_positions if p < seq_len]))
+    
+    # Merge with sample positions
+    all_positions = sorted(set(sample_positions + key_positions))[:40]  # Limit to 40 positions
     
     # Header
     header = "     "
-    for kv in show_positions:
+    for kv in all_positions:
         header += f"{kv:3d} "
     lines.append(header)
     
     # Mask values
-    b = torch.tensor(0)
-    h = torch.tensor(0)
-    
-    for q in show_positions:
+    for q in all_positions:
         row = f"{q:3d}: "
-        for kv in show_positions:
+        for kv in all_positions:
             q_idx = torch.tensor(q)
             kv_idx = torch.tensor(kv)
             can_attend = mask_mod(b, h, q_idx, kv_idx).item()
@@ -790,13 +873,13 @@ def format_debug_info(database_data, prompt, attention_mask_viz, output):
     lines.append(f"  Answers: {database_data.get('answers', 'N/A')}")
     lines.append(f"  Num Paraphrases: {len(database_data.get('paraphrases', []))}")
     if 'paraphrases' in database_data:
-        for i, para in enumerate(database_data['paraphrases'][:3]):  # Show first 3
-            lines.append(f"    Para {i+1}: {para[:80]}...")
+        # Show ALL paraphrases, no truncation
+        for i, para in enumerate(database_data['paraphrases']):
+            lines.append(f"    Para {i+1}: {para}")
     
     lines.append("\n[2] GENERATED PROMPT:")
-    # Show first 500 chars of prompt
-    prompt_preview = prompt[:500] + ("..." if len(prompt) > 500 else "")
-    lines.append(f"{prompt_preview}")
+    # Show FULL prompt, no truncation
+    lines.append(prompt)
     
     lines.append("\n[3] ATTENTION MASK:")
     lines.append(attention_mask_viz)
@@ -1040,9 +1123,10 @@ if __name__ == "__main__":
     )
     instruction = dataset.instruction
     
-    # Main generation loop
+    # Main generation loop - set up progress bar correctly
     sample_count = 0
-    for uuids, answers, all_paraphrases in tqdm(dataloader):
+    total_iterations = args.max_samples if args.max_samples else len(dataset.ds)
+    for uuids, answers, all_paraphrases in tqdm(dataloader, total=total_iterations):
         batch_predictions = []
         batch_generations = []
         batch_templates = []
@@ -1114,9 +1198,9 @@ if __name__ == "__main__":
                 print(f"SAMPLE {sample_count + 1} DEBUG OUTPUT")
                 print(full_debug)
                 
-                # Store in batch lists
+                # Store in batch lists - NO TRUNCATION for first 5 samples
                 batch_debug_database.append(str(db_data))
-                batch_debug_prompt.append(prompt[:500])  # First 500 chars
+                batch_debug_prompt.append(prompt)  # Full prompt, no truncation
                 batch_debug_mask.append(mask_viz)
                 batch_debug_output.append(generation)
             else:
