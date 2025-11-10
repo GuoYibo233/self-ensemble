@@ -3,12 +3,13 @@
 # Generate FlexAttention results for all models on MyriadLAMA dataset
 # 
 # Usage:
-#   bash scripts/generate_myriadlama_flexattention.sh [--rewrite] [--dry-run] [--max-samples N]
+#   bash scripts/generate_myriadlama_flexattention.sh [OPTIONS]
 #
 # Options:
-#   --rewrite        Regenerate results even if they already exist
-#   --dry-run        Show what would be done without actually running
-#   --max-samples N  Process only N samples per model (default: all samples)
+#   --rewrite           Regenerate results even if they already exist
+#   --dry-run           Show what would be done without actually running
+#   --max-samples N     Process only N samples per model (default: all samples)
+#   --generate-baseline Also generate per-prompt baseline after each model
 #
 
 set -e  # Exit on error
@@ -17,6 +18,7 @@ set -e  # Exit on error
 REWRITE_FLAG=""
 DRY_RUN=false
 MAX_SAMPLES=""
+GENERATE_BASELINE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -31,6 +33,10 @@ while [[ $# -gt 0 ]]; do
         --max-samples)
             MAX_SAMPLES="$2"
             shift 2
+            ;;
+        --generate-baseline)
+            GENERATE_BASELINE=true
+            shift
             ;;
         *)
             shift
@@ -61,6 +67,7 @@ echo "Dataset: myriadlama"
 echo "Rewrite: ${REWRITE_FLAG:-false}"
 echo "Dry run: $DRY_RUN"
 echo "Max samples per model: ${MAX_SAMPLES:-all}"
+echo "Generate baseline: $GENERATE_BASELINE"
 echo ""
 
 # Track statistics
@@ -138,7 +145,8 @@ for model in "${MODELS[@]}"; do
     fi
     
     # Build command - use myriadlama_flex_attention_generate.py for MyriadLAMA dataset
-    CMD="python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5"
+    # Use cuda:0 to avoid P2P issues and --disable_p2p for safety
+    CMD="python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device cuda:0 --disable_p2p"
     
     # Add rewrite flag if specified
     if [ -n "$REWRITE_FLAG" ]; then
@@ -148,6 +156,11 @@ for model in "${MODELS[@]}"; do
     # Add max_samples if specified
     if [ -n "$MAX_SAMPLES" ]; then
         CMD="$CMD --max_samples $MAX_SAMPLES"
+    fi
+    
+    # Add baseline generation flag if specified
+    if [ "$GENERATE_BASELINE" = true ]; then
+        CMD="$CMD --generate_baseline"
     fi
     
     if [ "$DRY_RUN" = true ]; then

@@ -1008,6 +1008,65 @@ def myriadlama_flex_generation(prompt, max_new_tokens=10, debug_info=None, use_f
     generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
     return generated_texts[0].strip()
 
+
+@torch.no_grad()
+def myriadlama_baseline_generation(prompt, max_new_tokens=10):
+    """
+    Generate text using simple greedy decoding (baseline).
+    
+    This is the per-prompt baseline: generates response for a single paraphrase
+    without any attention modifications or ensemble techniques.
+    
+    Args:
+        prompt: Single prompt string (instruction + few-shot + one question)
+        max_new_tokens: Maximum tokens to generate (default: 10 for one-word answers)
+        
+    Returns:
+        Generated text string
+    """
+    # Set model config
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    model.generation_config.temperature = None
+    model.generation_config.top_p = None
+    model.generation_config.pad_token_id = tokenizer.eos_token_id
+    
+    # Tokenize input
+    inputs = tokenizer(
+        prompt,
+        return_tensors="pt",
+        truncation=True,
+        add_special_tokens=True
+    ).to(model.device)
+    
+    generated = None
+    
+    # Generation loop with simple greedy decoding
+    for step in range(max_new_tokens):
+        # Forward pass
+        logits = model(inputs["input_ids"]).logits[:, -1, :]
+        
+        # Token selection (greedy)
+        next_token = torch.argmax(logits, dim=-1).unsqueeze(1)
+        inputs["input_ids"] = torch.cat([inputs["input_ids"], next_token], dim=1)
+        
+        if generated is None:
+            generated = next_token
+        else:
+            generated = torch.cat([generated, next_token], dim=1)
+        
+        # Check for EOS or newline
+        if next_token.item() == tokenizer.eos_token_id:
+            break
+        decoded_token = tokenizer.decode(next_token[0], skip_special_tokens=False)
+        if '\n' in decoded_token and step > 0:
+            break
+    
+    # Decode output
+    if generated is None:
+        return ""
+    generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
+    return generated_texts[0].strip()
+
 # ==============================================================================
 # Main script
 # ==============================================================================
@@ -1049,6 +1108,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--rewrite", action="store_true",
         help="Regenerate results even if output file already exists (overwrite mode)"
+    )
+    parser.add_argument(
+        "--generate_baseline", action="store_true",
+        help="Also generate per-prompt baseline (each paraphrase generated separately)"
     )
     args = parser.parse_args()
     
@@ -1294,3 +1357,83 @@ if __name__ == "__main__":
     csv_file = dump_file.replace('.feather', '.csv')
     df.to_csv(csv_file, index=False)
     print(f"✅ CSV file saved to {csv_file}")
+    
+    # Generate baseline if requested
+    if args.generate_baseline:
+        print("\n" + "="*80)
+        print("GENERATING PER-PROMPT BASELINE")
+        print("="*80)
+        print("Generating responses for each paraphrase separately (no ensemble)")
+        print()
+        
+        baseline_dump_file = f"{local_output_dir}/myriadlama_baseline_{args.num_paraphrases}paras.feather"
+        
+        # Check if baseline already exists
+        if os.path.exists(baseline_dump_file) and not args.rewrite:
+            print(f"Baseline file {baseline_dump_file} already exists, skipping baseline generation.")
+            print("Use --rewrite to regenerate.")
+        else:
+            # Reset dataloader for baseline generation
+            dataloader = dataset.get_dataloader(batch_size=1, shuffle=False)
+            
+            # DataFrame for baseline results
+            df_baseline = pd.DataFrame(columns=[
+                "uuid", "answers", "paraphrase", "paraphrase_idx", 
+                "prediction", "generation"
+            ])
+            
+            sample_count = 0
+            total_iterations = args.max_samples if args.max_samples else len(dataset.ds)
+            
+            for uuids, answers, all_paraphrases in tqdm(dataloader, total=total_iterations, desc="Baseline generation"):
+                # Process each question in batch
+                for i, paraphrases in enumerate(zip(*all_paraphrases)):
+                    # Get all paraphrases for this question
+                    all_templates = list(paraphrases)
+                    selected_templates = all_templates[:args.num_paraphrases]
+                    
+                    # Generate for EACH paraphrase separately
+                    for para_idx, paraphrase in enumerate(selected_templates):
+                        # Construct prompt with ONE paraphrase only
+                        prompt = construct_prompt_new_format(
+                            instruction,
+                            few_shot_examples,
+                            [paraphrase]  # Only one paraphrase
+                        )
+                        
+                        # Generate using baseline method (no flex attention)
+                        generation = myriadlama_baseline_generation(
+                            prompt,
+                            max_new_tokens=10
+                        )
+                        
+                        # Extract prediction
+                        prediction = generation.strip().split()[0] if generation.strip() else ""
+                        
+                        # Store result
+                        items = {
+                            "uuid": [uuids[i] if isinstance(uuids, list) else uuids],
+                            "answers": [answers[i] if isinstance(answers, list) else answers],
+                            "paraphrase": [paraphrase],
+                            "paraphrase_idx": [para_idx],
+                            "prediction": [prediction],
+                            "generation": [generation],
+                        }
+                        df_baseline = pd.concat([df_baseline, pd.DataFrame(items)], ignore_index=True)
+                
+                # Check if we've reached max_samples
+                sample_count += len(uuids)
+                if args.max_samples and sample_count >= args.max_samples:
+                    print(f"Reached max_samples limit ({args.max_samples}), stopping baseline generation")
+                    break
+            
+            # Save baseline results
+            df_baseline.to_feather(baseline_dump_file)
+            print(f"\n✅ Baseline results saved to {baseline_dump_file}")
+            print(f"   Total baseline samples: {len(df_baseline)}")
+            print(f"   Unique questions: {df_baseline['uuid'].nunique()}")
+            
+            # Convert to CSV
+            baseline_csv_file = baseline_dump_file.replace('.feather', '.csv')
+            df_baseline.to_csv(baseline_csv_file, index=False)
+            print(f"✅ Baseline CSV file saved to {baseline_csv_file}")
