@@ -145,8 +145,8 @@ for model in "${MODELS[@]}"; do
     fi
     
     # Build command - use myriadlama_flex_attention_generate.py for MyriadLAMA dataset
-    # Use cuda:0 to avoid P2P issues and --disable_p2p for safety
-    CMD="python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device cuda:0 --disable_p2p"
+    # Use auto device for multi-GPU support, but restrict to GPUs 4-9 via CUDA_VISIBLE_DEVICES
+    CMD="CUDA_VISIBLE_DEVICES=4,5,6,7,8,9 python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device auto --disable_p2p"
     
     # Add rewrite flag if specified
     if [ -n "$REWRITE_FLAG" ]; then
