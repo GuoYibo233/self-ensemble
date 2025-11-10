@@ -17,7 +17,7 @@ MODEL_PATHs = {
     "llama3.2_3b": "meta-llama/Llama-3.2-3B",
     "llama3.2_1b": "meta-llama/Llama-3.2-1B",
     "llama3.1_8b": "meta-llama/Llama-3.1-8B",
-    
+    "llama3.2_8b": "meta-llama/Llama-3.2-8B",
     # Qwen models - HuggingFace Hub IDs
     "qwen2.5_7b": "Qwen/Qwen2.5-7B",
     "qwen2.5_7b_it": "Qwen/Qwen2.5-7B-Instruct",

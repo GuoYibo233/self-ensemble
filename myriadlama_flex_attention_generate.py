@@ -1042,6 +1042,10 @@ if __name__ == "__main__":
         "--use_normal_attention", action="store_true",
         help="Use normal causal attention instead of FlexAttention (default: False, use FlexAttention)"
     )
+    parser.add_argument(
+        "--disable_p2p", action="store_true",
+        help="Disable GPU peer-to-peer (P2P) access (sets TORCH_CUDA_DISABLE_P2P=1, NCCL_P2P_DISABLE=1) to mitigate 'peer mapping resources exhausted' errors"
+    )
     args = parser.parse_args()
     
     # Check FlexAttention availability only if not using normal attention
@@ -1104,11 +1108,37 @@ if __name__ == "__main__":
         print(f"File {dump_file} already exists, skipping generation.")
         exit(0)
     
-    # Model loading
+    # Optional: disable P2P before any CUDA allocations (helps avoid peer mapping exhaustion)
+    if args.disable_p2p:
+        os.environ["TORCH_CUDA_DISABLE_P2P"] = "1"
+        os.environ["NCCL_P2P_DISABLE"] = "1"
+        print("🔧 Disabled CUDA/NCCL peer-to-peer (TORCH_CUDA_DISABLE_P2P=1, NCCL_P2P_DISABLE=1)")
+
+    # Model loading strategy:
+    # - If --device auto: let HF accelerate partition across GPUs (may trigger P2P mappings)
+    # - Else: load on CPU then move entire model to the specified single device (cuda:0, cuda:1, etc.)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, device_map=args.device, torch_dtype="auto"
-    )
+    if args.device == "auto":
+        print("📦 Loading model with device_map='auto' (multi-GPU partitioning)")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, device_map="auto", torch_dtype="auto"
+        )
+    else:
+        target_device = args.device
+        print(f"📦 Loading full model onto single device: {target_device}")
+        # Avoid passing an invalid device_map string; load normally then move
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, torch_dtype="auto"
+        )
+        try:
+            model.to(target_device)
+        except Exception as e:
+            print(f"❌ Failed to move model to {target_device}: {type(e).__name__}: {e}")
+            print("   Falling back to torch.device('cuda:0') if available")
+            fallback = "cuda:0" if torch.cuda.is_available() else "cpu"
+            model.to(fallback)
+            print(f"   Moved model to {fallback}")
+
     tokenizer.pad_token = tokenizer.eos_token
     
     # Print model info
