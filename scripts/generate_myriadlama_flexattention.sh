@@ -179,8 +179,8 @@ for model in "${MODELS[@]}"; do
         echo "Executing: $CMD"
         echo ""
         
-        # Run the command
-        if $CMD; then
+        # Run the command using eval to properly handle environment variables
+        if eval $CMD; then
             echo ""
             echo -e "${GREEN}✅ Successfully generated FlexAttention result for $model${NC}"
             ((GENERATED_MODELS++)) || true
