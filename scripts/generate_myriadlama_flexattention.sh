@@ -10,6 +10,8 @@
 #   --dry-run           Show what would be done without actually running
 #   --max-samples N     Process only N samples per model (default: all samples)
 #   --generate-baseline Also generate per-prompt baseline after each model
+#   --gpus GPUS         Specify GPUs to use (e.g., "4,5,6,7,8,9" or "0,1,2,3")
+#                       (default: "4,5,6,7,8,9")
 #
 
 set -e  # Exit on error
@@ -19,6 +21,7 @@ REWRITE_FLAG=""
 DRY_RUN=false
 MAX_SAMPLES=""
 GENERATE_BASELINE=false
+GPUS="4,5,6,7,8,9"  # Default GPUs
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -37,6 +40,10 @@ while [[ $# -gt 0 ]]; do
         --generate-baseline)
             GENERATE_BASELINE=true
             shift
+            ;;
+        --gpus)
+            GPUS="$2"
+            shift 2
             ;;
         *)
             shift
@@ -68,6 +75,7 @@ echo "Rewrite: ${REWRITE_FLAG:-false}"
 echo "Dry run: $DRY_RUN"
 echo "Max samples per model: ${MAX_SAMPLES:-all}"
 echo "Generate baseline: $GENERATE_BASELINE"
+echo "GPUs to use: $GPUS"
 echo ""
 
 # Track statistics
@@ -145,8 +153,8 @@ for model in "${MODELS[@]}"; do
     fi
     
     # Build command - use myriadlama_flex_attention_generate.py for MyriadLAMA dataset
-    # Use auto device for multi-GPU support, but restrict to GPUs 4-9 via CUDA_VISIBLE_DEVICES
-    CMD="CUDA_VISIBLE_DEVICES=4,5,6,7,8,9 python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device auto --disable_p2p"
+    # Use auto device for multi-GPU support, restrict to user-specified GPUs via CUDA_VISIBLE_DEVICES
+    CMD="CUDA_VISIBLE_DEVICES=$GPUS python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device auto --disable_p2p"
     
     # Add rewrite flag if specified
     if [ -n "$REWRITE_FLAG" ]; then
