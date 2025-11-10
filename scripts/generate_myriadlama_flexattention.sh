@@ -99,7 +99,7 @@ for model in "${MODELS[@]}"; do
         continue
     fi
     
-    ((TOTAL_MODELS++))
+    ((TOTAL_MODELS++)) || true
     
     model_dir="$DATASET_ROOT/myriadlama/$model"
     
@@ -125,7 +125,7 @@ for model in "${MODELS[@]}"; do
         echo -e "${GREEN}✓ FlexAttention result already exists${NC}"
         echo "  - $FLEX_ATTENTION_FILE"
         echo "  Use --rewrite to regenerate"
-        ((SKIPPED_MODELS++))
+        ((SKIPPED_MODELS++)) || true
         continue
     fi
     
@@ -140,7 +140,7 @@ for model in "${MODELS[@]}"; do
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}[DRY RUN] Would execute:${NC}"
         echo "  $CMD"
-        ((GENERATED_MODELS++))
+        ((GENERATED_MODELS++)) || true
     else
         echo "Executing: $CMD"
         echo ""
@@ -149,11 +149,11 @@ for model in "${MODELS[@]}"; do
         if $CMD; then
             echo ""
             echo -e "${GREEN}✅ Successfully generated FlexAttention result for $model${NC}"
-            ((GENERATED_MODELS++))
+            ((GENERATED_MODELS++)) || true
         else
             echo ""
             echo -e "${RED}❌ Failed to generate FlexAttention result for $model${NC}"
-            ((FAILED_MODELS++))
+            ((FAILED_MODELS++)) || true
         fi
     fi
 done
