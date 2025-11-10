@@ -3,11 +3,12 @@
 # Generate FlexAttention results for all models on MyriadLAMA dataset
 # 
 # Usage:
-#   bash scripts/generate_myriadlama_flexattention.sh [--rewrite] [--dry-run]
+#   bash scripts/generate_myriadlama_flexattention.sh [--rewrite] [--dry-run] [--max-samples N]
 #
 # Options:
-#   --rewrite   Regenerate results even if they already exist
-#   --dry-run   Show what would be done without actually running
+#   --rewrite        Regenerate results even if they already exist
+#   --dry-run        Show what would be done without actually running
+#   --max-samples N  Process only N samples per model (default: all samples)
 #
 
 set -e  # Exit on error
@@ -15,9 +16,10 @@ set -e  # Exit on error
 # Parse arguments
 REWRITE_FLAG=""
 DRY_RUN=false
+MAX_SAMPLES=""
 
-for arg in "$@"; do
-    case $arg in
+while [[ $# -gt 0 ]]; do
+    case $1 in
         --rewrite)
             REWRITE_FLAG="--rewrite"
             shift
@@ -26,7 +28,12 @@ for arg in "$@"; do
             DRY_RUN=true
             shift
             ;;
+        --max-samples)
+            MAX_SAMPLES="$2"
+            shift 2
+            ;;
         *)
+            shift
             ;;
     esac
 done
@@ -53,6 +60,7 @@ echo "Project root: $PROJECT_ROOT"
 echo "Dataset: myriadlama"
 echo "Rewrite: ${REWRITE_FLAG:-false}"
 echo "Dry run: $DRY_RUN"
+echo "Max samples per model: ${MAX_SAMPLES:-all}"
 echo ""
 
 # Track statistics
@@ -135,6 +143,11 @@ for model in "${MODELS[@]}"; do
     # Add rewrite flag if specified
     if [ -n "$REWRITE_FLAG" ]; then
         CMD="$CMD --rewrite"
+    fi
+    
+    # Add max_samples if specified
+    if [ -n "$MAX_SAMPLES" ]; then
+        CMD="$CMD --max_samples $MAX_SAMPLES"
     fi
     
     if [ "$DRY_RUN" = true ]; then
