@@ -68,7 +68,7 @@ FAILED_MODELS=0
 # ============================================================================
 
 MODELS=(
-
+    # Original models
     "llama3.2_3b"
     "llama3.2_3b_it"
     "qwen2.5_3b_it"
@@ -76,6 +76,15 @@ MODELS=(
     "qwen3_1.7b"
     "qwen3_4b"
     "qwen3_8b"
+    
+    # New models requested
+    "llama3.1_8b"
+    "llama3.1_70b"
+    "deepseek_r1_distill_llama_8b"
+    "deepseek_r1_distill_qwen_32b"
+    "deepseek_r1_distill_qwen_14b"
+    "qwen2.5_7b"
+    "qwen2.5_14b"
 )
 
 # ============================================================================
@@ -109,7 +118,8 @@ for model in "${MODELS[@]}"; do
     fi
     
     # Check if flex_attention result already exists
-    FLEX_ATTENTION_FILE="$model_dir/flex_attention-5.feather"
+    # Python script generates: myriadlama_flex_{num_paraphrases}paras.feather
+    FLEX_ATTENTION_FILE="$model_dir/myriadlama_flex_5paras.feather"
     
     if [ -f "$FLEX_ATTENTION_FILE" ] && [ -z "$REWRITE_FLAG" ]; then
         echo -e "${GREEN}✓ FlexAttention result already exists${NC}"
@@ -119,8 +129,13 @@ for model in "${MODELS[@]}"; do
         continue
     fi
     
-    # Build command
-    CMD="python3 $PROJECT_ROOT/src/generate_flex_attention.py --dataset myriadlama --model $model --num_paraphrases 5 --lemmaize"
+    # Build command - use myriadlama_flex_attention_generate.py for MyriadLAMA dataset
+    CMD="python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5"
+    
+    # Add rewrite flag if specified
+    if [ -n "$REWRITE_FLAG" ]; then
+        CMD="$CMD --rewrite"
+    fi
     
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}[DRY RUN] Would execute:${NC}"

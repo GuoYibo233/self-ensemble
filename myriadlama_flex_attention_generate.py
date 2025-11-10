@@ -1046,6 +1046,10 @@ if __name__ == "__main__":
         "--disable_p2p", action="store_true",
         help="Disable GPU peer-to-peer (P2P) access (sets TORCH_CUDA_DISABLE_P2P=1, NCCL_P2P_DISABLE=1) to mitigate 'peer mapping resources exhausted' errors"
     )
+    parser.add_argument(
+        "--rewrite", action="store_true",
+        help="Regenerate results even if output file already exists (overwrite mode)"
+    )
     args = parser.parse_args()
     
     # Check FlexAttention availability only if not using normal attention
@@ -1104,8 +1108,9 @@ if __name__ == "__main__":
         
         exit(0)
     
-    if os.path.exists(dump_file):
+    if os.path.exists(dump_file) and not args.rewrite:
         print(f"File {dump_file} already exists, skipping generation.")
+        print("Use --rewrite flag to regenerate.")
         exit(0)
     
     # Optional: disable P2P before any CUDA allocations (helps avoid peer mapping exhaustion)
