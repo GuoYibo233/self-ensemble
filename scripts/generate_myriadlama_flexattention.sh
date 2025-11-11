@@ -9,9 +9,9 @@
 #   --rewrite           Regenerate results even if they already exist
 #   --dry-run           Show what would be done without actually running
 #   --max-samples N     Process only N samples per model (default: all samples)
-#   --generate-baseline Also generate per-prompt baseline after each model
+#   --generate-baseline Generate ONLY per-prompt baseline (skip FlexAttention)
 #   --gpus GPUS         Specify GPUs to use (e.g., "4,5,6,7,8,9" or "0,1,2,3")
-#                       (default: "4,5,6,7,8,9")
+#                       (default: auto, no restriction)
 #   --parallel N        Run N models in parallel (default: 1, sequential)
 #                       Note: Requires sufficient GPUs for parallel execution
 #
@@ -23,7 +23,7 @@ REWRITE_FLAG=""
 DRY_RUN=false
 MAX_SAMPLES=""
 GENERATE_BASELINE=false
-GPUS="4,5,6,7,8,9"  # Default GPUs
+GPUS=""  # Default: no GPU restriction (auto)
 PARALLEL=1  # Default: sequential execution
 
 while [[ $# -gt 0 ]]; do
@@ -82,7 +82,10 @@ echo "Rewrite: ${REWRITE_FLAG:-false}"
 echo "Dry run: $DRY_RUN"
 echo "Max samples per model: ${MAX_SAMPLES:-all}"
 echo "Generate baseline: $GENERATE_BASELINE"
-echo "GPUs to use: $GPUS"
+if [ "$GENERATE_BASELINE" = true ]; then
+    echo "Mode: Baseline ONLY (skipping FlexAttention)"
+fi
+echo "GPUs to use: ${GPUS:-auto (no restriction)}"
 echo "Parallel jobs: $PARALLEL"
 echo ""
 
@@ -152,18 +155,35 @@ process_model() {
         fi
     fi
     
-    # Check if flex_attention result already exists
-    FLEX_ATTENTION_FILE="$model_dir/myriadlama_flex_5paras.feather"
-    
-    if [ -f "$FLEX_ATTENTION_FILE" ] && [ -z "$REWRITE_FLAG" ]; then
-        echo -e "${GREEN}✓ FlexAttention result already exists${NC}"
-        echo "  - $FLEX_ATTENTION_FILE"
-        echo "  Use --rewrite to regenerate"
-        return 2  # Special return code for skipped
+    # If baseline-only mode, skip FlexAttention generation check
+    if [ "$GENERATE_BASELINE" = false ]; then
+        # Check if flex_attention result already exists
+        FLEX_ATTENTION_FILE="$model_dir/myriadlama_flex_5paras.feather"
+        
+        if [ -f "$FLEX_ATTENTION_FILE" ] && [ -z "$REWRITE_FLAG" ]; then
+            echo -e "${GREEN}✓ FlexAttention result already exists${NC}"
+            echo "  - $FLEX_ATTENTION_FILE"
+            echo "  Use --rewrite to regenerate"
+            return 2  # Special return code for skipped
+        fi
+    else
+        # In baseline-only mode, check if baseline already exists
+        BASELINE_FILE="$model_dir/myriadlama_baseline_5paras.feather"
+        
+        if [ -f "$BASELINE_FILE" ] && [ -z "$REWRITE_FLAG" ]; then
+            echo -e "${GREEN}✓ Baseline result already exists${NC}"
+            echo "  - $BASELINE_FILE"
+            echo "  Use --rewrite to regenerate"
+            return 2  # Special return code for skipped
+        fi
     fi
     
     # Build command
-    CMD="CUDA_VISIBLE_DEVICES=$GPUS python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device auto --disable_p2p"
+    if [ -n "$GPUS" ]; then
+        CMD="CUDA_VISIBLE_DEVICES=$GPUS python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device auto --disable_p2p"
+    else
+        CMD="python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device auto --disable_p2p"
+    fi
     
     if [ -n "$REWRITE_FLAG" ]; then
         CMD="$CMD --rewrite"
@@ -187,11 +207,19 @@ process_model() {
         
         if eval $CMD; then
             echo ""
-            echo -e "${GREEN}✅ Successfully generated FlexAttention result for $model${NC}"
+            if [ "$GENERATE_BASELINE" = true ]; then
+                echo -e "${GREEN}✅ Successfully generated baseline result for $model${NC}"
+            else
+                echo -e "${GREEN}✅ Successfully generated FlexAttention result for $model${NC}"
+            fi
             return 0
         else
             echo ""
-            echo -e "${RED}❌ Failed to generate FlexAttention result for $model${NC}"
+            if [ "$GENERATE_BASELINE" = true ]; then
+                echo -e "${RED}❌ Failed to generate baseline result for $model${NC}"
+            else
+                echo -e "${RED}❌ Failed to generate FlexAttention result for $model${NC}"
+            fi
             return 1
         fi
     fi
