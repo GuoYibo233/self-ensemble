@@ -1171,10 +1171,32 @@ if __name__ == "__main__":
         
         exit(0)
     
-    if os.path.exists(dump_file) and not args.rewrite:
-        print(f"File {dump_file} already exists, skipping generation.")
+    # Check if FlexAttention file exists
+    skip_flex_generation = os.path.exists(dump_file) and not args.rewrite
+    
+    if skip_flex_generation:
+        print(f"File {dump_file} already exists, skipping FlexAttention generation.")
         print("Use --rewrite flag to regenerate.")
-        exit(0)
+        
+        # If baseline generation is not requested, we can exit now
+        if not args.generate_baseline:
+            exit(0)
+        
+        # Otherwise, check if baseline also exists
+        baseline_dump_file = f"{local_output_dir}/baseline_per_prompt.feather"
+        if os.path.exists(baseline_dump_file) and not args.rewrite:
+            print(f"Baseline file {baseline_dump_file} also already exists.")
+            print("Both FlexAttention and baseline files exist. Nothing to do.")
+            print("Use --rewrite flag to regenerate both.")
+            exit(0)
+        else:
+            print(f"Baseline file does not exist or --rewrite specified.")
+            print("Will generate baseline only.")
+            # Skip to baseline generation section
+            # We need to load the existing FlexAttention results to get the dataloader setup
+            df = pd.read_feather(dump_file)
+    else:
+        skip_flex_generation = False
     
     # Optional: disable P2P before any CUDA allocations (helps avoid peer mapping exhaustion)
     if args.disable_p2p:
@@ -1220,17 +1242,6 @@ if __name__ == "__main__":
     if hasattr(model.config, 'num_attention_heads'):
         print(f"   Attention heads: {model.config.num_attention_heads}")
     
-    # DataFrame initialization - added new columns for debug info
-    df = pd.DataFrame(columns=[
-        "uuid", "answers", "prediction", "generation", "templates",
-        "debug_database", "debug_prompt", "debug_mask", "debug_output"
-    ])
-    
-    attention_mode = "Normal Causal Attention" if args.use_normal_attention else "FlexAttention"
-    print(f"\nMyriadLAMA generation with {attention_mode}")
-    if args.max_samples:
-        print(f"Processing maximum {args.max_samples} samples")
-    
     # Get few-shot examples with multiple paraphrases (new format)
     # Use same number of paraphrases for few-shot as for main question
     few_shot_examples = get_few_shot_examples_with_paraphrases(
@@ -1241,122 +1252,137 @@ if __name__ == "__main__":
     )
     instruction = dataset.instruction
     
-    # Main generation loop - set up progress bar correctly
-    sample_count = 0
-    total_iterations = args.max_samples if args.max_samples else len(dataset.ds)
-    for uuids, answers, all_paraphrases in tqdm(dataloader, total=total_iterations):
-        batch_predictions = []
-        batch_generations = []
-        batch_templates = []
-        batch_debug_database = []
-        batch_debug_prompt = []
-        batch_debug_mask = []
-        batch_debug_output = []
+    # Only run FlexAttention generation if not skipping
+    if not skip_flex_generation:
+        # DataFrame initialization - added new columns for debug info
+        df = pd.DataFrame(columns=[
+            "uuid", "answers", "prediction", "generation", "templates",
+            "debug_database", "debug_prompt", "debug_mask", "debug_output"
+        ])
         
-        # Process each question in batch
-        for i, paraphrases in enumerate(zip(*all_paraphrases)):
-            # All paraphrases in MyriadLAMA are manually generated
-            # Simply select the first N paraphrases
-            all_templates = list(paraphrases)
-            selected_templates = all_templates[:args.num_paraphrases]
+        attention_mode = "Normal Causal Attention" if args.use_normal_attention else "FlexAttention"
+        print(f"\nMyriadLAMA generation with {attention_mode}")
+        if args.max_samples:
+            print(f"Processing maximum {args.max_samples} samples")
+        
+        # Main generation loop - set up progress bar correctly
+        sample_count = 0
+        total_iterations = args.max_samples if args.max_samples else len(dataset.ds)
+        for uuids, answers, all_paraphrases in tqdm(dataloader, total=total_iterations):
+            batch_predictions = []
+            batch_generations = []
+            batch_templates = []
+            batch_debug_database = []
+            batch_debug_prompt = []
+            batch_debug_mask = []
+            batch_debug_output = []
             
-            # Construct ONE prompt with ALL question paraphrases (NEW FORMAT)
-            # Prompt has: instruction + few-shot examples + ALL main question paraphrases
-            prompt = construct_prompt_new_format(
-                instruction,
-                few_shot_examples,
-                selected_templates  # Pass ALL paraphrases, not just one
-            )
-            
-            # Prepare debug info container
-            debug_info = {} if sample_count < 5 else None
-            
-            # Generate using MyriadLAMA-specific FlexAttention or normal attention
-            generation = myriadlama_flex_generation(
-                prompt,  # Single prompt with all paraphrases
-                max_new_tokens=10,
-                debug_info=debug_info,
-                use_flex_attention=not args.use_normal_attention
-            )
-            
-            # Extract prediction (first word only for MyriadLAMA)
-            prediction = generation.strip().split()[0] if generation.strip() else ""
-            
-            batch_predictions.append(prediction)
-            batch_generations.append(generation)
-            batch_templates.append(selected_templates)
-            
-            # Collect debug info for first 5 samples
-            if debug_info:
-                # Database data
-                db_data = {
-                    'uuid': uuids[i] if isinstance(uuids, list) else uuids,
-                    'answers': answers[i] if isinstance(answers, list) else answers,
-                    'paraphrases': selected_templates
-                }
+            # Process each question in batch
+            for i, paraphrases in enumerate(zip(*all_paraphrases)):
+                # All paraphrases in MyriadLAMA are manually generated
+                # Simply select the first N paraphrases
+                all_templates = list(paraphrases)
+                selected_templates = all_templates[:args.num_paraphrases]
                 
-                # Create attention mask visualization
-                mask_viz = visualize_attention_mask(
-                    debug_info['segment_positions'],
-                    debug_info['segment_metadata'],
-                    debug_info['original_length'],
-                    tokenizer,
-                    debug_info['concatenated_text']
+                # Construct ONE prompt with ALL question paraphrases (NEW FORMAT)
+                # Prompt has: instruction + few-shot examples + ALL main question paraphrases
+                prompt = construct_prompt_new_format(
+                    instruction,
+                    few_shot_examples,
+                    selected_templates  # Pass ALL paraphrases, not just one
                 )
                 
-                # Format full debug output
-                full_debug = format_debug_info(
-                    db_data,
-                    prompt,
-                    mask_viz,
-                    generation
+                # Prepare debug info container
+                debug_info = {} if sample_count < 5 else None
+                
+                # Generate using MyriadLAMA-specific FlexAttention or normal attention
+                generation = myriadlama_flex_generation(
+                    prompt,  # Single prompt with all paraphrases
+                    max_new_tokens=10,
+                    debug_info=debug_info,
+                    use_flex_attention=not args.use_normal_attention
                 )
                 
-                # Print for first 5 samples
-                print(f"\n{'='*80}")
-                print(f"SAMPLE {sample_count + 1} DEBUG OUTPUT")
-                print(full_debug)
+                # Extract prediction (first word only for MyriadLAMA)
+                prediction = generation.strip().split()[0] if generation.strip() else ""
                 
-                # Store in batch lists - NO TRUNCATION for first 5 samples
-                batch_debug_database.append(str(db_data))
-                batch_debug_prompt.append(prompt)  # Full prompt, no truncation
-                batch_debug_mask.append(mask_viz)
-                batch_debug_output.append(generation)
-            else:
-                # No debug info for samples beyond first 5
-                batch_debug_database.append("")
-                batch_debug_prompt.append("")
-                batch_debug_mask.append("")
-                batch_debug_output.append("")
+                batch_predictions.append(prediction)
+                batch_generations.append(generation)
+                batch_templates.append(selected_templates)
+                
+                # Collect debug info for first 5 samples
+                if debug_info:
+                    # Database data
+                    db_data = {
+                        'uuid': uuids[i] if isinstance(uuids, list) else uuids,
+                        'answers': answers[i] if isinstance(answers, list) else answers,
+                        'paraphrases': selected_templates
+                    }
+                    
+                    # Create attention mask visualization
+                    mask_viz = visualize_attention_mask(
+                        debug_info['segment_positions'],
+                        debug_info['segment_metadata'],
+                        debug_info['original_length'],
+                        tokenizer,
+                        debug_info['concatenated_text']
+                    )
+                    
+                    # Format full debug output
+                    full_debug = format_debug_info(
+                        db_data,
+                        prompt,
+                        mask_viz,
+                        generation
+                    )
+                    
+                    # Print for first 5 samples
+                    print(f"\n{'='*80}")
+                    print(f"SAMPLE {sample_count + 1} DEBUG OUTPUT")
+                    print(full_debug)
+                    
+                    # Store in batch lists - NO TRUNCATION for first 5 samples
+                    batch_debug_database.append(str(db_data))
+                    batch_debug_prompt.append(prompt)  # Full prompt, no truncation
+                    batch_debug_mask.append(mask_viz)
+                    batch_debug_output.append(generation)
+                else:
+                    # No debug info for samples beyond first 5
+                    batch_debug_database.append("")
+                    batch_debug_prompt.append("")
+                    batch_debug_mask.append("")
+                    batch_debug_output.append("")
+            
+            # Store results
+            items = {
+                "uuid": uuids,
+                "templates": batch_templates,
+                "answers": answers,
+                "prediction": batch_predictions,
+                "generation": batch_generations,
+                "debug_database": batch_debug_database,
+                "debug_prompt": batch_debug_prompt,
+                "debug_mask": batch_debug_mask,
+                "debug_output": batch_debug_output,
+            }
+            df = pd.concat([df, pd.DataFrame(items)], ignore_index=True)
+            
+            # Check if we've reached max_samples
+            sample_count += len(uuids)
+            if args.max_samples and sample_count >= args.max_samples:
+                print(f"Reached max_samples limit ({args.max_samples}), stopping generation")
+                break
         
-        # Store results
-        items = {
-            "uuid": uuids,
-            "templates": batch_templates,
-            "answers": answers,
-            "prediction": batch_predictions,
-            "generation": batch_generations,
-            "debug_database": batch_debug_database,
-            "debug_prompt": batch_debug_prompt,
-            "debug_mask": batch_debug_mask,
-            "debug_output": batch_debug_output,
-        }
-        df = pd.concat([df, pd.DataFrame(items)], ignore_index=True)
+        # Save results
+        df.to_feather(dump_file)
+        print(f"✅ Results saved to {dump_file}")
         
-        # Check if we've reached max_samples
-        sample_count += len(uuids)
-        if args.max_samples and sample_count >= args.max_samples:
-            print(f"Reached max_samples limit ({args.max_samples}), stopping generation")
-            break
-    
-    # Save results
-    df.to_feather(dump_file)
-    print(f"✅ Results saved to {dump_file}")
-    
-    # Convert to CSV automatically
-    csv_file = dump_file.replace('.feather', '.csv')
-    df.to_csv(csv_file, index=False)
-    print(f"✅ CSV file saved to {csv_file}")
+        # Convert to CSV automatically
+        csv_file = dump_file.replace('.feather', '.csv')
+        df.to_csv(csv_file, index=False)
+        print(f"✅ CSV file saved to {csv_file}")
+    else:
+        print("\n✓ Skipping FlexAttention generation (file already exists)")
     
     # Generate baseline if requested
     if args.generate_baseline:
