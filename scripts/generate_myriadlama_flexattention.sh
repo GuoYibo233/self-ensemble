@@ -12,6 +12,8 @@
 #   --generate-baseline Also generate per-prompt baseline after each model
 #   --gpus GPUS         Specify GPUs to use (e.g., "4,5,6,7,8,9" or "0,1,2,3")
 #                       (default: "4,5,6,7,8,9")
+#   --parallel N        Run N models in parallel (default: 1, sequential)
+#                       Note: Requires sufficient GPUs for parallel execution
 #
 
 set -e  # Exit on error
@@ -22,6 +24,7 @@ DRY_RUN=false
 MAX_SAMPLES=""
 GENERATE_BASELINE=false
 GPUS="4,5,6,7,8,9"  # Default GPUs
+PARALLEL=1  # Default: sequential execution
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -43,6 +46,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --gpus)
             GPUS="$2"
+            shift 2
+            ;;
+        --parallel)
+            PARALLEL="$2"
             shift 2
             ;;
         *)
@@ -76,6 +83,7 @@ echo "Dry run: $DRY_RUN"
 echo "Max samples per model: ${MAX_SAMPLES:-all}"
 echo "Generate baseline: $GENERATE_BASELINE"
 echo "GPUs to use: $GPUS"
+echo "Parallel jobs: $PARALLEL"
 echo ""
 
 # Track statistics
@@ -117,12 +125,16 @@ echo "========================================================================"
 echo "Processing Models on MyriadLAMA"
 echo "========================================================================"
 
-for model in "${MODELS[@]}"; do
-    if [[ -z "$model" || "$model" =~ ^[[:space:]]*# ]]; then
-        continue
-    fi
-    
-    ((TOTAL_MODELS++)) || true
+# Function to process a single model
+process_model() {
+    local model="$1"
+    local REWRITE_FLAG="$2"
+    local MAX_SAMPLES="$3"
+    local GENERATE_BASELINE="$4"
+    local GPUS="$5"
+    local DRY_RUN="$6"
+    local PROJECT_ROOT="$7"
+    local DATASET_ROOT="$8"
     
     model_dir="$DATASET_ROOT/myriadlama/$model"
     
@@ -141,32 +153,26 @@ for model in "${MODELS[@]}"; do
     fi
     
     # Check if flex_attention result already exists
-    # Python script generates: myriadlama_flex_{num_paraphrases}paras.feather
     FLEX_ATTENTION_FILE="$model_dir/myriadlama_flex_5paras.feather"
     
     if [ -f "$FLEX_ATTENTION_FILE" ] && [ -z "$REWRITE_FLAG" ]; then
         echo -e "${GREEN}✓ FlexAttention result already exists${NC}"
         echo "  - $FLEX_ATTENTION_FILE"
         echo "  Use --rewrite to regenerate"
-        ((SKIPPED_MODELS++)) || true
-        continue
+        return 2  # Special return code for skipped
     fi
     
-    # Build command - use myriadlama_flex_attention_generate.py for MyriadLAMA dataset
-    # Use auto device for multi-GPU support, restrict to user-specified GPUs via CUDA_VISIBLE_DEVICES
+    # Build command
     CMD="CUDA_VISIBLE_DEVICES=$GPUS python3 $PROJECT_ROOT/myriadlama_flex_attention_generate.py --model $model --num_paraphrases 5 --device auto --disable_p2p"
     
-    # Add rewrite flag if specified
     if [ -n "$REWRITE_FLAG" ]; then
         CMD="$CMD --rewrite"
     fi
     
-    # Add max_samples if specified
     if [ -n "$MAX_SAMPLES" ]; then
         CMD="$CMD --max_samples $MAX_SAMPLES"
     fi
     
-    # Add baseline generation flag if specified
     if [ "$GENERATE_BASELINE" = true ]; then
         CMD="$CMD --generate_baseline"
     fi
@@ -174,23 +180,105 @@ for model in "${MODELS[@]}"; do
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}[DRY RUN] Would execute:${NC}"
         echo "  $CMD"
-        ((GENERATED_MODELS++)) || true
+        return 0
     else
         echo "Executing: $CMD"
         echo ""
         
-        # Run the command using eval to properly handle environment variables
         if eval $CMD; then
             echo ""
             echo -e "${GREEN}✅ Successfully generated FlexAttention result for $model${NC}"
-            ((GENERATED_MODELS++)) || true
+            return 0
         else
             echo ""
             echo -e "${RED}❌ Failed to generate FlexAttention result for $model${NC}"
-            ((FAILED_MODELS++)) || true
+            return 1
         fi
     fi
-done
+}
+
+# Export function and variables for parallel execution
+export -f process_model
+export RED GREEN YELLOW BLUE NC
+
+# Process models
+if [ "$PARALLEL" -eq 1 ]; then
+    # Sequential execution
+    for model in "${MODELS[@]}"; do
+        if [[ -z "$model" || "$model" =~ ^[[:space:]]*# ]]; then
+            continue
+        fi
+        
+        ((TOTAL_MODELS++)) || true
+        
+        process_model "$model" "$REWRITE_FLAG" "$MAX_SAMPLES" "$GENERATE_BASELINE" "$GPUS" "$DRY_RUN" "$PROJECT_ROOT" "$DATASET_ROOT"
+        ret=$?
+        
+        if [ $ret -eq 0 ]; then
+            ((GENERATED_MODELS++)) || true
+        elif [ $ret -eq 2 ]; then
+            ((SKIPPED_MODELS++)) || true
+        else
+            ((FAILED_MODELS++)) || true
+        fi
+    done
+else
+    # Parallel execution
+    echo "Running $PARALLEL models in parallel..."
+    echo ""
+    
+    # Create a temporary directory for job tracking
+    TMP_DIR=$(mktemp -d)
+    
+    # Filter out empty lines and comments
+    VALID_MODELS=()
+    for model in "${MODELS[@]}"; do
+        if [[ -n "$model" && ! "$model" =~ ^[[:space:]]*# ]]; then
+            VALID_MODELS+=("$model")
+        fi
+    done
+    
+    TOTAL_MODELS=${#VALID_MODELS[@]}
+    
+    # Process models in parallel batches
+    for ((i=0; i<${#VALID_MODELS[@]}; i+=$PARALLEL)); do
+        BATCH_PIDS=()
+        
+        for ((j=0; j<$PARALLEL && i+j<${#VALID_MODELS[@]}; j++)); do
+            model="${VALID_MODELS[$((i+j))]}"
+            
+            # Run model processing in background
+            (
+                process_model "$model" "$REWRITE_FLAG" "$MAX_SAMPLES" "$GENERATE_BASELINE" "$GPUS" "$DRY_RUN" "$PROJECT_ROOT" "$DATASET_ROOT"
+                echo $? > "$TMP_DIR/${model}.status"
+            ) &
+            
+            BATCH_PIDS+=($!)
+        done
+        
+        # Wait for current batch to complete
+        for pid in "${BATCH_PIDS[@]}"; do
+            wait $pid
+        done
+    done
+    
+    # Collect results
+    for model in "${VALID_MODELS[@]}"; do
+        if [ -f "$TMP_DIR/${model}.status" ]; then
+            ret=$(cat "$TMP_DIR/${model}.status")
+            if [ $ret -eq 0 ]; then
+                ((GENERATED_MODELS++)) || true
+            elif [ $ret -eq 2 ]; then
+                ((SKIPPED_MODELS++)) || true
+            else
+                ((FAILED_MODELS++)) || true
+            fi
+        fi
+    done
+    
+    # Cleanup
+    rm -rf "$TMP_DIR"
+fi
 
 # Print summary
 echo ""
