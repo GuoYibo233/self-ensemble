@@ -100,14 +100,14 @@ MODELS=(
     "qwen3_4b"
     "qwen3_8b"
     
-    # New models requested
+    # New models 
     "llama3.1_8b"
-    "llama3.1_70b"
+    # "llama3.1_70b"
     "deepseek_r1_distill_llama_8b"
-    "deepseek_r1_distill_qwen_32b"
-    "deepseek_r1_distill_qwen_14b"
-    "qwen2.5_7b"
-    "qwen2.5_14b"
+    #"deepseek_r1_distill_qwen_32b"
+    #"deepseek_r1_distill_qwen_14b"
+    #"qwen2.5_7b"
+    #"qwen2.5_14b"
 )
 
 # ============================================================================
