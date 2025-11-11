@@ -17,9 +17,15 @@ MODEL_PATHs = {
     "llama3.2_3b": "meta-llama/Llama-3.2-3B",
     "llama3.2_1b": "meta-llama/Llama-3.2-1B",
     "llama3.1_8b": "meta-llama/Llama-3.1-8B",
-    
+    "llama3.1_70b": "meta-llama/Llama-3.1-70B",
+    "llama3.2_8b": "meta-llama/Llama-3.2-8B",
+    # DeepSeek models - HuggingFace Hub IDs
+    "deepseek_r1_distill_llama_8b": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+    "deepseek_r1_distill_qwen_32b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+    "deepseek_r1_distill_qwen_14b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
     # Qwen models - HuggingFace Hub IDs
     "qwen2.5_7b": "Qwen/Qwen2.5-7B",
+    "qwen2.5_14b": "Qwen/Qwen2.5-14B",
     "qwen2.5_7b_it": "Qwen/Qwen2.5-7B-Instruct",
     "qwen2.5_3b_it": "Qwen/Qwen2.5-3B-Instruct",
     "qwen3_1.7b": "Qwen/Qwen3-1.7B",

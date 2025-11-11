@@ -1,15 +1,19 @@
 #!/bin/bash
 # 
-# Generate FlexAttention results for all models on MyriadLAMA dataset
+# Generate baseline results for MyriadLAMA dataset
 # 
+# This script generates per-prompt baseline results for MyriadLAMA models.
+# It can run both baseline and FlexAttention results in one pass when --rewrite is not used,
+# automatically skipping already generated files.
+#
 # Usage:
-#   bash scripts/generate_myriadlama_flexattention.sh [OPTIONS]
+#   bash scripts/generate_myriadlama_baseline.sh [OPTIONS]
 #
 # Options:
 #   --rewrite           Regenerate results even if they already exist
 #   --dry-run           Show what would be done without actually running
 #   --max-samples N     Process only N samples per model (default: all samples)
-#   --generate-baseline Generate ONLY per-prompt baseline (skip FlexAttention)
+#   --skip-flex         Skip FlexAttention generation, only generate baseline
 #   --gpus GPUS         Specify GPUs to use (e.g., "4,5,6,7,8,9" or "0,1,2,3")
 #                       (default: auto, no restriction)
 #   --parallel N        Run N models in parallel (default: 1, sequential)
@@ -22,7 +26,7 @@ set -e  # Exit on error
 REWRITE_FLAG=""
 DRY_RUN=false
 MAX_SAMPLES=""
-GENERATE_BASELINE=false
+SKIP_FLEX=false
 GPUS=""  # Default: no GPU restriction (auto)
 PARALLEL=1  # Default: sequential execution
 
@@ -40,8 +44,8 @@ while [[ $# -gt 0 ]]; do
             MAX_SAMPLES="$2"
             shift 2
             ;;
-        --generate-baseline)
-            GENERATE_BASELINE=true
+        --skip-flex)
+            SKIP_FLEX=true
             shift
             ;;
         --gpus)
@@ -73,7 +77,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 echo "========================================================================"
-echo "Generate FlexAttention Results for MyriadLAMA Dataset"
+echo "Generate Baseline Results for MyriadLAMA Dataset"
 echo "========================================================================"
 echo "Dataset root: $DATASET_ROOT"
 echo "Project root: $PROJECT_ROOT"
@@ -81,10 +85,7 @@ echo "Dataset: myriadlama"
 echo "Rewrite: ${REWRITE_FLAG:-false}"
 echo "Dry run: $DRY_RUN"
 echo "Max samples per model: ${MAX_SAMPLES:-all}"
-echo "Generate baseline: $GENERATE_BASELINE"
-if [ "$GENERATE_BASELINE" = true ]; then
-    echo "Mode: Baseline ONLY (skipping FlexAttention)"
-fi
+echo "Skip FlexAttention: $SKIP_FLEX"
 echo "GPUs to use: ${GPUS:-auto (no restriction)}"
 echo "Parallel jobs: $PARALLEL"
 echo ""
@@ -98,7 +99,7 @@ FAILED_MODELS=0
 # ============================================================================
 # Model List Configuration
 # ============================================================================
-# 配置要在 MyriadLAMA 上运行 FlexAttention 的模型列表
+# Configure models to run baseline generation on
 # ============================================================================
 
 MODELS=(
@@ -111,14 +112,14 @@ MODELS=(
     "qwen3_4b"
     "qwen3_8b"
     
-    # New models 
+    # New models
     "llama3.1_8b"
-    # "llama3.1_70b"
+    "llama3.1_70b"
     "deepseek_r1_distill_llama_8b"
-    #"deepseek_r1_distill_qwen_32b"
-    #"deepseek_r1_distill_qwen_14b"
-    #"qwen2.5_7b"
-    #"qwen2.5_14b"
+    "deepseek_r1_distill_qwen_32b"
+    "deepseek_r1_distill_qwen_14b"
+    "qwen2.5_7b"
+    "qwen2.5_14b"
 )
 
 # ============================================================================
@@ -133,7 +134,7 @@ process_model() {
     local model="$1"
     local REWRITE_FLAG="$2"
     local MAX_SAMPLES="$3"
-    local GENERATE_BASELINE="$4"
+    local SKIP_FLEX="$4"
     local GPUS="$5"
     local DRY_RUN="$6"
     local PROJECT_ROOT="$7"
@@ -155,27 +156,46 @@ process_model() {
         fi
     fi
     
-    # If baseline-only mode, skip FlexAttention generation check
-    if [ "$GENERATE_BASELINE" = false ]; then
-        # Check if flex_attention result already exists
-        FLEX_ATTENTION_FILE="$model_dir/myriadlama_flex_5paras.feather"
-        
-        if [ -f "$FLEX_ATTENTION_FILE" ] && [ -z "$REWRITE_FLAG" ]; then
-            echo -e "${GREEN}✓ FlexAttention result already exists${NC}"
-            echo "  - $FLEX_ATTENTION_FILE"
-            echo "  Use --rewrite to regenerate"
-            return 2  # Special return code for skipped
+    # Check what already exists
+    FLEX_FILE="$model_dir/myriadlama_flex_5paras.feather"
+    BASELINE_FILE="$model_dir/baseline_per_prompt.feather"
+    
+    flex_exists=false
+    baseline_exists=false
+    
+    if [ -f "$FLEX_FILE" ]; then
+        flex_exists=true
+    fi
+    
+    if [ -f "$BASELINE_FILE" ]; then
+        baseline_exists=true
+    fi
+    
+    # Determine what to generate
+    generate_flex=false
+    generate_baseline=false
+    
+    if [ "$SKIP_FLEX" = false ]; then
+        if [ "$flex_exists" = false ] || [ -n "$REWRITE_FLAG" ]; then
+            generate_flex=true
         fi
-    else
-        # In baseline-only mode, check if baseline already exists
-        BASELINE_FILE="$model_dir/myriadlama_baseline_5paras.feather"
-        
-        if [ -f "$BASELINE_FILE" ] && [ -z "$REWRITE_FLAG" ]; then
-            echo -e "${GREEN}✓ Baseline result already exists${NC}"
+    fi
+    
+    if [ "$baseline_exists" = false ] || [ -n "$REWRITE_FLAG" ]; then
+        generate_baseline=true
+    fi
+    
+    # Check if we need to do anything
+    if [ "$generate_flex" = false ] && [ "$generate_baseline" = false ]; then
+        echo -e "${GREEN}✓ Both FlexAttention and baseline results already exist${NC}"
+        if [ "$flex_exists" = true ]; then
+            echo "  - $FLEX_FILE"
+        fi
+        if [ "$baseline_exists" = true ]; then
             echo "  - $BASELINE_FILE"
-            echo "  Use --rewrite to regenerate"
-            return 2  # Special return code for skipped
         fi
+        echo "  Use --rewrite to regenerate"
+        return 2  # Special return code for skipped
     fi
     
     # Build command
@@ -193,8 +213,16 @@ process_model() {
         CMD="$CMD --max_samples $MAX_SAMPLES"
     fi
     
-    if [ "$GENERATE_BASELINE" = true ]; then
-        CMD="$CMD --generate_baseline"
+    # Always add --generate_baseline flag since we want baseline
+    CMD="$CMD --generate_baseline"
+    
+    # Report what will be generated
+    if [ "$generate_flex" = true ] && [ "$generate_baseline" = true ]; then
+        echo "Will generate: FlexAttention + Baseline"
+    elif [ "$generate_flex" = true ]; then
+        echo "Will generate: FlexAttention only (baseline exists)"
+    elif [ "$generate_baseline" = true ]; then
+        echo "Will generate: Baseline only (FlexAttention exists)"
     fi
     
     if [ "$DRY_RUN" = true ]; then
@@ -207,19 +235,17 @@ process_model() {
         
         if eval $CMD; then
             echo ""
-            if [ "$GENERATE_BASELINE" = true ]; then
-                echo -e "${GREEN}✅ Successfully generated baseline result for $model${NC}"
+            if [ "$generate_flex" = true ] && [ "$generate_baseline" = true ]; then
+                echo -e "${GREEN}✅ Successfully generated FlexAttention and baseline for $model${NC}"
+            elif [ "$generate_flex" = true ]; then
+                echo -e "${GREEN}✅ Successfully generated FlexAttention for $model${NC}"
             else
-                echo -e "${GREEN}✅ Successfully generated FlexAttention result for $model${NC}"
+                echo -e "${GREEN}✅ Successfully generated baseline for $model${NC}"
             fi
             return 0
         else
             echo ""
-            if [ "$GENERATE_BASELINE" = true ]; then
-                echo -e "${RED}❌ Failed to generate baseline result for $model${NC}"
-            else
-                echo -e "${RED}❌ Failed to generate FlexAttention result for $model${NC}"
-            fi
+            echo -e "${RED}❌ Failed to generate results for $model${NC}"
             return 1
         fi
     fi
@@ -239,7 +265,7 @@ if [ "$PARALLEL" -eq 1 ]; then
         
         ((TOTAL_MODELS++)) || true
         
-        process_model "$model" "$REWRITE_FLAG" "$MAX_SAMPLES" "$GENERATE_BASELINE" "$GPUS" "$DRY_RUN" "$PROJECT_ROOT" "$DATASET_ROOT"
+        process_model "$model" "$REWRITE_FLAG" "$MAX_SAMPLES" "$SKIP_FLEX" "$GPUS" "$DRY_RUN" "$PROJECT_ROOT" "$DATASET_ROOT"
         ret=$?
         
         if [ $ret -eq 0 ]; then
@@ -277,7 +303,7 @@ else
             
             # Run model processing in background
             (
-                process_model "$model" "$REWRITE_FLAG" "$MAX_SAMPLES" "$GENERATE_BASELINE" "$GPUS" "$DRY_RUN" "$PROJECT_ROOT" "$DATASET_ROOT"
+                process_model "$model" "$REWRITE_FLAG" "$MAX_SAMPLES" "$SKIP_FLEX" "$GPUS" "$DRY_RUN" "$PROJECT_ROOT" "$DATASET_ROOT"
                 echo $? > "$TMP_DIR/${model}.status"
             ) &
             
@@ -322,7 +348,7 @@ fi
 echo ""
 
 if [ "$DRY_RUN" = true ]; then
-    echo -e "${YELLOW}This was a dry run. Run without --dry-run to actually generate results.${NC}"
+    echo "This was a dry run. Run without --dry-run to actually generate results."
 fi
 
 if [ $FAILED_MODELS -gt 0 ]; then
