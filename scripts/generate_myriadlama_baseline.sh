@@ -158,7 +158,7 @@ process_model() {
     
     # Check what already exists
     FLEX_FILE="$model_dir/myriadlama_flex_5paras.feather"
-    BASELINE_FILE="$model_dir/myriadlama_baseline_5paras.feather"
+    BASELINE_FILE="$model_dir/baseline_per_prompt.feather"
     
     flex_exists=false
     baseline_exists=false

@@ -1366,7 +1366,7 @@ if __name__ == "__main__":
         print("Generating responses for each paraphrase separately (no ensemble)")
         print()
         
-        baseline_dump_file = f"{local_output_dir}/myriadlama_baseline_{args.num_paraphrases}paras.feather"
+        baseline_dump_file = f"{local_output_dir}/baseline_per_prompt.feather"
         
         # Check if baseline already exists
         if os.path.exists(baseline_dump_file) and not args.rewrite:
