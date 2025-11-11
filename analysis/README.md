@@ -1,10 +1,45 @@
 # Analysis Scripts Overview
 
-This directory contains scripts for analyzing generation results from the self-ensemble experiments.
+This directory contains scripts and notebooks for analyzing generation results from the self-ensemble experiments.
 
-## Scripts
+## 📓 Notebooks
 
-### 1. analyze_detailed.py (NEW - Enhanced Analysis)
+### myriadlama_analysis.ipynb (NEW - Comprehensive Analysis Notebook)
+
+**Purpose**: Interactive Jupyter notebook for comprehensive MyriadLAMA results analysis
+
+**Features**:
+- ✅ **One-click search**: Automatically discover all generation files and baselines
+- ✅ **Built-in lemmatization**: Integrated Spacy lemmatization with on-the-fly support
+- ✅ **Comparison tables**: Sortable accuracy comparisons with improvement calculations
+- ✅ **Detailed examples**: View questions, predictions, and answers with correctness indicators
+- ✅ **Cross-method comparison**: Compare same examples across different methods
+- ✅ **Error analysis**: Analyze patterns in incorrect predictions
+- ✅ **CSV export**: Export detailed analysis for external review
+- ✅ **No plotting**: Text and table-based analysis only
+
+**Use when**:
+- You want an interactive analysis environment
+- You need to explore results from multiple methods at once
+- You want to generate comparison tables and detailed examples
+- You need flexible, customizable analysis workflows
+
+**Quick Start**:
+```bash
+# Launch Jupyter
+jupyter notebook analysis/myriadlama_analysis.ipynb
+
+# Or use JupyterLab
+jupyter lab analysis/myriadlama_analysis.ipynb
+```
+
+See [MYRIADLAMA_ANALYSIS_README.md](MYRIADLAMA_ANALYSIS_README.md) for complete documentation.
+
+---
+
+## 🐍 Python Scripts
+
+### 1. analyze_detailed.py (Enhanced Analysis)
 
 **Purpose**: Export detailed features for comprehensive analysis
 
@@ -107,23 +142,26 @@ python analysis/demo_detailed_analysis.py
 
 ## Quick Comparison
 
-| Script | Output Format | Comparison | Export to File | Detailed Features |
-|--------|--------------|------------|----------------|-------------------|
-| analyze_detailed.py | CSV/Excel | ❌ | ✅ | ✅ (All fields) |
-| analyze_baseline.py | Console | ✅ | ❌ | ❌ |
-| analyze_flexattention.py | Console | ✅ | ❌ | ❌ |
+| Tool | Output Format | Comparison | Export to File | Detailed Features | Interactive |
+|------|--------------|------------|----------------|-------------------|-------------|
+| **myriadlama_analysis.ipynb** | Notebook/CSV | ✅ | ✅ | ✅ (All fields) | ✅ |
+| analyze_detailed.py | CSV/Excel | ❌ | ✅ | ✅ (All fields) | ❌ |
+| analyze_baseline.py | Console | ✅ | ❌ | ❌ | ❌ |
+| analyze_flexattention.py | Console | ✅ | ❌ | ❌ | ❌ |
 
 ## Typical Workflow
 
 1. **Generate results** using baseline_generate.py, flex_attention_generate.py, or generate.py
-2. **Quick check**: Use analyze_baseline.py or analyze_flexattention.py for console output
-3. **Detailed review**: Use analyze_detailed.py to export comprehensive data
-4. **Analysis**: Open exported CSV/Excel in your preferred tool for detailed analysis
+2. **Interactive analysis**: Use **myriadlama_analysis.ipynb** for comprehensive exploration (RECOMMENDED)
+3. **Quick check**: Use analyze_baseline.py or analyze_flexattention.py for console output
+4. **Batch export**: Use analyze_detailed.py to export comprehensive data for specific methods
+5. **Further analysis**: Open exported CSV/Excel in your preferred tool for additional analysis
 
 ## Notes
 
-- All scripts require that generation has been completed first
-- All scripts use lemmatized matching for accuracy calculation
+- All scripts and notebooks require that generation has been completed first
+- All analysis tools use lemmatized matching for accuracy calculation
+- **myriadlama_analysis.ipynb** is recommended for most analysis tasks as it combines all features in an interactive environment
 - analyze_detailed.py does NOT include paraphrase number comparison or plotting (as per current requirements)
 - The detailed export is especially useful for:
   - Manual error analysis
