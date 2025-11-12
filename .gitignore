@@ -49,3 +49,6 @@ Thumbs.db
 tmp/
 temp/
 *.tmpplot/demo_outputs_v2/
+
+# Lemmatization cache files
+*_lemmatized.csv
