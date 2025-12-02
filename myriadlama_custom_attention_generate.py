@@ -309,16 +309,15 @@ def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
 
 
 # ==============================================================================
-# LLaMA model patching - supports multiple transformers versions
+# LLaMA model patching (for transformers >= 4.55)
 # ==============================================================================
 
 def install_llama_struct_mask(model):
     """
     Install custom structure mask for LLaMA model.
     
-    Supports multiple transformers versions:
-    - For transformers < 4.55: patches LlamaModel._update_causal_mask
-    - For transformers >= 4.55: patches each LlamaDecoderLayer.forward
+    Patches each LlamaDecoderLayer.forward to inject custom structure mask
+    on top of the attention_mask.
     
     Args:
         model: HuggingFace LlamaForCausalLM model
@@ -329,53 +328,7 @@ def install_llama_struct_mask(model):
     from transformers.models.llama.modeling_llama import LlamaDecoderLayer
     
     base: LlamaModel = model.model
-    patch_info = {'method': None, 'originals': {}}
-    
-    # Try the old API first (_update_causal_mask)
-    if hasattr(base, '_update_causal_mask'):
-        patch_info['method'] = '_update_causal_mask'
-        old_update = base._update_causal_mask
-        patch_info['originals']['_update_causal_mask'] = old_update
-        
-        def _update_causal_mask_patch(attention_mask, input_tensor, cache_position,
-                                      past_key_values, output_attentions):
-            # Get base 4D mask: [B, 1, Q, K]
-            causal_mask = old_update(attention_mask, input_tensor,
-                                     cache_position, past_key_values,
-                                     output_attentions)
-            if causal_mask is None:
-                return None  # SDPA path; with eager this should not happen
-            
-            # Check if model has question_group_ids set
-            if not hasattr(model, 'question_group_ids') or model.question_group_ids is None:
-                return causal_mask
-            
-            B, H1, Q, K = causal_mask.shape
-            if B != 1:
-                raise ValueError(
-                    f"MyriadLAMA pipeline requires batch_size=1, got batch_size={B}. "
-                    "Please use batch_size=1 in your dataloader."
-                )
-            
-            # Build structure mask
-            struct_mask = build_question_struct_mask(
-                model.question_group_ids, Q, K,
-                dtype=causal_mask.dtype,
-                device=causal_mask.device,
-            )  # [1, 1, Q, K]
-            
-            if H1 > 1:
-                struct_mask = struct_mask.expand(B, H1, Q, K)
-            
-            # Add structure mask to causal mask (additive masking)
-            return causal_mask + struct_mask
-        
-        base._update_causal_mask = _update_causal_mask_patch
-        model._llama_patch_info = patch_info
-        return patch_info
-    
-    # For transformers >= 4.55, patch each decoder layer's forward
-    patch_info['method'] = 'decoder_layer'
+    patch_info = {'method': 'decoder_layer', 'originals': {}}
     
     for layer_idx, layer in enumerate(base.layers):
         if not isinstance(layer, LlamaDecoderLayer):
@@ -448,13 +401,9 @@ def uninstall_llama_struct_mask(model, patch_info=None):
     
     base = model.model
     
-    if patch_info['method'] == '_update_causal_mask':
-        if '_update_causal_mask' in patch_info['originals']:
-            base._update_causal_mask = patch_info['originals']['_update_causal_mask']
-    elif patch_info['method'] == 'decoder_layer':
-        for layer_idx, old_forward in patch_info['originals'].items():
-            if isinstance(layer_idx, int):
-                base.layers[layer_idx].forward = old_forward
+    for layer_idx, old_forward in patch_info['originals'].items():
+        if isinstance(layer_idx, int):
+            base.layers[layer_idx].forward = old_forward
     
     # Clean up stored reference
     if hasattr(model, '_llama_patch_info'):
