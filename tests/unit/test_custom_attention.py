@@ -6,6 +6,12 @@ Tests the core functionality:
 1. build_question_struct_mask - Custom attention mask building
 2. tokenize_prompt_parts - Tokenization with position tracking
 3. Mask behavior verification
+
+Note: Core functions are copied here rather than imported to allow isolated testing
+without requiring all module dependencies (spacy, transformers, etc.). This is a
+trade-off: the duplicated code may drift from the main module, but it enables
+running these tests in minimal CI environments. The functions tested here are the
+core algorithms that should not change frequently.
 """
 
 import pytest
@@ -14,7 +20,9 @@ import sys
 import os
 
 
-# Copy the core functions here for isolated testing without full module dependencies
+# Copy the core functions here for isolated testing without full module dependencies.
+# This enables testing in environments without spacy, transformers, etc. installed.
+# If these functions change in the main module, update them here as well.
 def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
     """
     Build the per-query structure mask [1, 1, Q, K].

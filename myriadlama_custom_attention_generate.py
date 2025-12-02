@@ -319,8 +319,14 @@ def install_llama_struct_mask(model):
     Wraps LlamaModel._update_causal_mask to add our custom structure mask
     on top of the base causal mask.
     
+    Note: This patches a private method (_update_causal_mask) which may change
+    in future versions of transformers. Tested with transformers >= 4.30.0.
+    
     Args:
         model: HuggingFace LlamaForCausalLM model
+        
+    Returns:
+        original_update_fn: The original _update_causal_mask function for restoration
     """
     base: LlamaModel = model.model
     old_update = base._update_causal_mask
@@ -339,7 +345,11 @@ def install_llama_struct_mask(model):
             return causal_mask
         
         B, H1, Q, K = causal_mask.shape
-        assert B == 1, "MyriadLAMA pipeline uses batch_size=1"
+        if B != 1:
+            raise ValueError(
+                f"MyriadLAMA pipeline requires batch_size=1, got batch_size={B}. "
+                "Please use batch_size=1 in your dataloader."
+            )
         
         # Build structure mask
         struct_mask = build_question_struct_mask(
@@ -355,17 +365,36 @@ def install_llama_struct_mask(model):
         return causal_mask + struct_mask
     
     base._update_causal_mask = _update_causal_mask_patch
+    
+    # Store original function on model for easy restoration
+    model._original_update_causal_mask = old_update
+    
+    return old_update
 
 
-def uninstall_llama_struct_mask(model, original_update_fn):
+def uninstall_llama_struct_mask(model, original_update_fn=None):
     """
     Restore original _update_causal_mask for LLaMA model.
     
     Args:
         model: HuggingFace LlamaForCausalLM model
-        original_update_fn: Original _update_causal_mask function
+        original_update_fn: Original _update_causal_mask function (optional, 
+                           can be retrieved from model._original_update_causal_mask)
     """
+    if original_update_fn is None:
+        if hasattr(model, '_original_update_causal_mask'):
+            original_update_fn = model._original_update_causal_mask
+        else:
+            raise ValueError(
+                "Cannot restore original function: original_update_fn not provided "
+                "and model._original_update_causal_mask not found"
+            )
+    
     model.model._update_causal_mask = original_update_fn
+    
+    # Clean up stored reference
+    if hasattr(model, '_original_update_causal_mask'):
+        del model._original_update_causal_mask
 
 
 # ==============================================================================
@@ -596,6 +625,10 @@ if __name__ == "__main__":
         help="Device for model (default: auto)"
     )
     parser.add_argument(
+        "--output_dir", type=str, default=None,
+        help="Output directory for results (default: /net/tokyo100-10g/data/str01_01/y-guo/datasets/myriadlama/{model})"
+    )
+    parser.add_argument(
         "--lemmaize", action="store_true",
         help="Normalize predictions and answers to lemmas"
     )
@@ -640,8 +673,12 @@ if __name__ == "__main__":
     # Use batch_size=1 for sequential processing
     dataloader = dataset.get_dataloader(batch_size=1, shuffle=False)
     
-    # Output file setup
-    local_output_dir = f"/net/tokyo100-10g/data/str01_01/y-guo/datasets/myriadlama/{args.model}"
+    # Output file setup - use provided output_dir or default
+    if args.output_dir:
+        local_output_dir = args.output_dir
+    else:
+        # Default output directory (may need to be adjusted for your environment)
+        local_output_dir = f"/net/tokyo100-10g/data/str01_01/y-guo/datasets/myriadlama/{args.model}"
     os.makedirs(local_output_dir, exist_ok=True)
     
     # Determine file name
@@ -651,8 +688,10 @@ if __name__ == "__main__":
     
     # Lemmatization mode
     if args.lemmaize:
-        assert os.path.exists(dump_file), \
-            f"File {dump_file} does not exist. Run without --lemmaize first."
+        if not os.path.exists(dump_file):
+            raise FileNotFoundError(
+                f"File {dump_file} does not exist. Run without --lemmaize first."
+            )
         
         df = pd.read_feather(dump_file)
         if "predict_lemma" in df.columns and "answer_lemmas" in df.columns:
@@ -710,12 +749,15 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
     
     # Force eager attention for explicit mask usage
+    # Note: _attn_implementation is a private attribute that may change in future
+    # versions of transformers. This is the recommended way to force eager attention
+    # as of transformers 4.30.0+. If this breaks, check the transformers documentation.
     model.config._attn_implementation = "eager"
     print(f"🔧 Set attention implementation to 'eager'")
     
     # Install custom attention mask hook
     print(f"🔧 Installing custom structure mask for LLaMA model...")
-    install_llama_struct_mask(model)
+    original_update_fn = install_llama_struct_mask(model)
     
     # Print model info
     print(f"🔍 Model: {args.model}")
