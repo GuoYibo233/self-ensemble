@@ -1,0 +1,842 @@
+"""
+MyriadLama Custom Attention Generation (without FlexAttention).
+
+This script implements a custom attention-based ensemble generation specifically
+designed for the MyriadLAMA dataset, without using FlexAttention.
+
+Key features:
+- Uses HuggingFace's native attention mask mechanism
+- Patches LLaMA's _update_causal_mask to inject custom structure masks
+- Implements segment-based masking where:
+  * Causal mask is always applied
+  * Shared part (instruction + few-shot) uses normal causal attention
+  * Each para part can attend to itself and the shared part
+  * Para parts are isolated from each other (cannot attend to other paras)
+- Provides placeholder interface for Qwen model support
+
+Attention Pattern (visualized):
+    shared_part | para_1 | para_2 | para_3 | ...
+    ------------+--------+--------+--------+----
+    normal      | see    | see    | see    | ...   <- shared tokens
+    causal      | shared | shared | shared | ...
+                | only   | only   | only   |
+    ------------+--------+--------+--------+----
+    can see     | normal | X      | X      | ...   <- para_1 tokens
+    shared      | causal |        |        |
+    ------------+--------+--------+--------+----
+    can see     | X      | normal | X      | ...   <- para_2 tokens
+    shared      |        | causal |        |
+    ------------+--------+--------+--------+----
+    ...
+"""
+
+import os
+import spacy
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+import multiprocessing as mp
+import warnings
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers.models.llama.modeling_llama import LlamaModel
+
+from constants import MODEL_PATHs
+
+warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
+
+# ==============================================================================
+# REUSED FROM myriadlama_flex_attention_generate.py - Lemmatization functions
+# ==============================================================================
+
+nlp = None
+num_parts = 8
+
+
+def init_spacy():
+    """Reused from generate.py"""
+    global nlp
+    nlp = spacy.load("en_core_web_lg")
+
+
+def lemmaize_predicts(predict):
+    """Reused from generate.py"""
+    global nlp
+    doc = nlp(predict)
+    return [token.lemma_.lower() for token in doc]
+
+
+def lemmaize_chunk(chunk):
+    """Reused from generate.py"""
+    predict_lemmas = []
+    answer_lemmas = []
+    for prediction, answers in tqdm(zip(chunk["prediction"], chunk["answers"]), total=len(chunk)):
+        predict_lemmas.append(lemmaize_predicts(prediction))
+        answer_lemmas.append([lemmaize_predicts(ans) for ans in answers])
+    return predict_lemmas, answer_lemmas
+
+
+def append_lemmas(df, results):
+    """Reused from generate.py"""
+    all_predict_lemmas = []
+    all_answer_lemmas = []
+    for predict_lemmas, answer_lemmas in results:
+        all_predict_lemmas.extend(predict_lemmas)
+        all_answer_lemmas.extend(answer_lemmas)
+    df["predict_lemma"] = pd.Series(all_predict_lemmas, dtype=object)
+    df["answer_lemmas"] = pd.Series(all_answer_lemmas, dtype=object)
+    return df
+
+
+# ==============================================================================
+# REUSED FROM myriadlama_flex_attention_generate.py - Prompt construction
+# ==============================================================================
+
+def get_few_shot_examples_with_paraphrases(dataset, k=5, num_fs_paraphrases=3, seed=42):
+    """
+    Get few-shot examples formatted with multiple paraphrase questions + one answer.
+    
+    Each few-shot example has:
+    - Multiple paraphrase questions (same count as main question paraphrases)
+    - One answer (shared by all paraphrases)
+    
+    Args:
+        dataset: MyriadLamaDataset instance
+        k: Number of few-shot examples
+        num_fs_paraphrases: Number of paraphrase questions per few-shot 
+                            (should match main question paraphrase count)
+        seed: Random seed
+        
+    Returns:
+        List of few-shot examples, each as:
+        {'paraphrases': [q1, q2, ...], 'answer': ans}
+    """
+    import random
+    from datasets import load_from_disk
+    
+    if not os.path.exists(dataset.dataset_path):
+        raise FileNotFoundError(f"Dataset not found at {dataset.dataset_path}")
+    
+    train_ds = load_from_disk(dataset.dataset_path)['train']
+    random.seed(seed)
+    indices = random.sample(range(len(train_ds)), k)
+    
+    few_shot_examples = []
+    for idx in indices:
+        example = train_ds[idx]
+        # Get available paraphrases (manual_paraphrases + auto_paraphrases)
+        all_paras = example["manual_paraphrases"] + example.get("auto_paraphrases", [])
+        # Select first num_fs_paraphrases
+        selected_paras = all_paras[:min(num_fs_paraphrases, len(all_paras))]
+        answer = example["answers"][0]
+        
+        few_shot_examples.append({
+            'paraphrases': selected_paras,
+            'answer': answer
+        })
+    
+    return few_shot_examples
+
+
+def construct_prompt_new_format(instruction, few_shot_examples, question_paraphrases):
+    """
+    Construct prompt parts: one shared part + multiple paraphrase parts.
+    
+    Returns a list where:
+    - First element: shared part (instruction + few-shot examples)
+    - Remaining elements: individual paraphrase parts (one per paraphrase)
+    
+    Shared part format:
+    {instruction}
+    
+    Q: {fs1_para1} A: {fs1_answer}
+    Q: {fs2_para1} A: {fs2_answer}
+    Q: {fs3_para1} A: {fs3_answer}
+    
+    Each paraphrase part format:
+    Q: {main_question_paraphrase} A:
+    
+    Args:
+        instruction: Instruction string
+        few_shot_examples: List of {'paraphrases': [...], 'answer': ...}
+        question_paraphrases: List of all main question paraphrase strings
+        
+    Returns:
+        List of strings: [shared_part, para_part_1, para_part_2, ...]
+    """
+    # Build shared part: instruction + few-shot examples
+    shared_parts = []
+    
+    # Add instruction with trailing newline
+    shared_parts.append(instruction + "\n")
+    
+    # Add few-shot examples (each on one line: Q: ... A: ...)
+    fs_lines = []
+    for fs_example in few_shot_examples:
+        # Use only the FIRST paraphrase from each few-shot example
+        para = fs_example['paraphrases'][0]
+        answer = fs_example['answer']
+        fs_lines.append(f"Q: {para} A: {answer}")
+    
+    # Join few-shot lines with newlines, add trailing newline
+    shared_parts.append("\n".join(fs_lines) + "\n")
+    
+    # Combine shared parts
+    shared_part = "\n".join(shared_parts)
+    
+    # Build individual paraphrase parts
+    para_parts = []
+    for para in question_paraphrases:
+        para_part = f"Q: {para} A:"
+        para_parts.append(para_part)
+    
+    # Return list: [shared_part, para_part_1, para_part_2, ...]
+    return [shared_part] + para_parts
+
+
+def tokenize_prompt_parts(prompt_parts, tokenizer):
+    """
+    Tokenize prompt parts and track positions for each segment.
+    
+    Args:
+        prompt_parts: List of strings [shared_part, para_part_1, para_part_2, ...]
+        tokenizer: HuggingFace tokenizer
+        
+    Returns:
+        concatenated_text: Single concatenated string
+        segment_positions: List of (start, end) tuples for each segment
+        question_group_ids: Tensor of group IDs for each token position
+        total_length: Total number of tokens
+    """
+    # Tokenize each part individually
+    tokenized_parts = []
+    separator = "\n"  # Single newline separator
+    sep_tokens = tokenizer.encode(separator, add_special_tokens=False)
+    
+    for part in prompt_parts:
+        tokens = tokenizer.encode(part, add_special_tokens=False)
+        tokenized_parts.append(tokens)
+    
+    # Build full token sequence and track positions
+    full_tokens = []
+    segment_positions = []
+    current_pos = 0
+    
+    for i, tokens in enumerate(tokenized_parts):
+        if i > 0:
+            # Add separator
+            full_tokens.extend(sep_tokens)
+            current_pos += len(sep_tokens)
+        
+        start_pos = current_pos
+        full_tokens.extend(tokens)
+        current_pos += len(tokens)
+        end_pos = current_pos
+        
+        segment_positions.append((start_pos, end_pos))
+    
+    # Build question_group_ids tensor
+    # Group 0 = shared part (instruction + few-shot)
+    # Group 1 = para_part_1
+    # Group 2 = para_part_2
+    # ...
+    total_length = len(full_tokens)
+    question_group_ids = torch.zeros(total_length, dtype=torch.long)
+    
+    for group_idx, (start, end) in enumerate(segment_positions):
+        question_group_ids[start:end] = group_idx
+    
+    # Decode back to text
+    concatenated_text = tokenizer.decode(full_tokens, skip_special_tokens=False)
+    
+    return concatenated_text, segment_positions, question_group_ids, total_length
+
+
+# ==============================================================================
+# NEW - Custom attention mask building (per reference document)
+# ==============================================================================
+
+def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
+    """
+    Build the per-query structure mask [1, 1, Q, K].
+    
+    Rule (token-level):
+    - Let g_q = question_group_ids[q], g_k = question_group_ids[k].
+    - If g_q == 0 (shared part): allow everything (structure doesn't constrain it)
+    - If g_q >= 1 (para part N): allow g_k == 0 OR g_k == g_q (can see shared + self)
+    
+    Args:
+        question_group_ids: [S] tensor with values in {0, 1, 2, ...}
+                           0 = shared part, 1+ = para parts
+        Q: Query sequence length
+        K: Key sequence length
+        dtype: Data type for mask
+        device: Device for mask
+        
+    Returns:
+        [1, 1, Q, K] additive mask (0 or -inf)
+    """
+    neg_inf = torch.finfo(dtype).min
+    
+    # Ensure question_group_ids is on the correct device
+    q_group_ids = question_group_ids[:Q].to(device)
+    k_group_ids = question_group_ids[:K].to(device)
+    
+    # [Q, 1] and [1, K]
+    g_q = q_group_ids.view(Q, 1)  # [Q, 1]
+    g_k = k_group_ids.view(1, K)  # [1, K]
+    
+    # Boolean conditions
+    is_shared = (g_q == 0)  # Query is in shared part
+    is_para = (g_q >= 1)    # Query is in some para part
+    
+    # For shared part queries: allow all keys (normal causal will be applied separately)
+    allowed_shared = is_shared  # [Q, 1] broadcast to [Q, K]
+    
+    # For para part queries: allow keys in shared (g_k == 0) OR same group (g_q == g_k)
+    is_k_shared = (g_k == 0)  # [1, K]
+    same_group = (g_q == g_k)  # [Q, K]
+    allowed_para = is_para & (is_k_shared | same_group)  # [Q, K]
+    
+    # Combine: allow if either condition is true
+    allowed = allowed_shared | allowed_para  # [Q, K]
+    
+    # Create mask: 0 for allowed, -inf for blocked
+    mask = torch.zeros((1, 1, Q, K), device=device, dtype=dtype)
+    mask = mask.masked_fill(~allowed, neg_inf)
+    
+    return mask
+
+
+# ==============================================================================
+# NEW - LLaMA model patching (per reference document)
+# ==============================================================================
+
+def install_llama_struct_mask(model):
+    """
+    Install custom structure mask for LLaMA model.
+    
+    Wraps LlamaModel._update_causal_mask to add our custom structure mask
+    on top of the base causal mask.
+    
+    Args:
+        model: HuggingFace LlamaForCausalLM model
+    """
+    base: LlamaModel = model.model
+    old_update = base._update_causal_mask
+    
+    def _update_causal_mask_patch(attention_mask, input_tensor, cache_position,
+                                  past_key_values, output_attentions):
+        # Get base 4D mask: [B, 1, Q, K]
+        causal_mask = old_update(attention_mask, input_tensor,
+                                 cache_position, past_key_values,
+                                 output_attentions)
+        if causal_mask is None:
+            return None  # SDPA path; with eager this should not happen
+        
+        # Check if model has question_group_ids set
+        if not hasattr(model, 'question_group_ids') or model.question_group_ids is None:
+            return causal_mask
+        
+        B, H1, Q, K = causal_mask.shape
+        assert B == 1, "MyriadLAMA pipeline uses batch_size=1"
+        
+        # Build structure mask
+        struct_mask = build_question_struct_mask(
+            model.question_group_ids, Q, K,
+            dtype=causal_mask.dtype,
+            device=causal_mask.device,
+        )  # [1, 1, Q, K]
+        
+        if H1 > 1:
+            struct_mask = struct_mask.expand(B, H1, Q, K)
+        
+        # Add structure mask to causal mask (additive masking)
+        return causal_mask + struct_mask
+    
+    base._update_causal_mask = _update_causal_mask_patch
+
+
+def uninstall_llama_struct_mask(model, original_update_fn):
+    """
+    Restore original _update_causal_mask for LLaMA model.
+    
+    Args:
+        model: HuggingFace LlamaForCausalLM model
+        original_update_fn: Original _update_causal_mask function
+    """
+    model.model._update_causal_mask = original_update_fn
+
+
+# ==============================================================================
+# NEW - Qwen model patching placeholder (per reference document)
+# ==============================================================================
+
+def install_qwen_struct_mask(model):
+    """
+    Install custom structure mask for Qwen model.
+    
+    Placeholder for future Qwen support. Currently not implemented.
+    
+    Args:
+        model: HuggingFace Qwen model
+    """
+    raise NotImplementedError(
+        "Qwen model support is not yet implemented. "
+        "Please use LLaMA models for now."
+    )
+
+
+def uninstall_qwen_struct_mask(model, original_forwards):
+    """
+    Restore original forwards for Qwen model.
+    
+    Placeholder for future Qwen support.
+    
+    Args:
+        model: HuggingFace Qwen model
+        original_forwards: Dict of original forward functions
+    """
+    raise NotImplementedError(
+        "Qwen model support is not yet implemented."
+    )
+
+
+# ==============================================================================
+# NEW - Custom attention generation function
+# ==============================================================================
+
+@torch.no_grad()
+def myriadlama_custom_attention_generation(
+    model,
+    tokenizer,
+    prompt_parts,
+    max_new_tokens=10,
+    debug_info=None
+):
+    """
+    Generate text using custom attention masking for MyriadLAMA.
+    
+    This uses HuggingFace's native attention mask with custom structure mask
+    overlay to implement:
+    - Causal mask always applied
+    - Shared part uses normal causal attention
+    - Each para part can see itself and shared part
+    - Para parts are isolated from each other
+    
+    Args:
+        model: HuggingFace model (LLaMA)
+        tokenizer: HuggingFace tokenizer
+        prompt_parts: List of strings [shared_part, para_part_1, ...]
+        max_new_tokens: Maximum tokens to generate (default: 10)
+        debug_info: Optional dict for debug output
+        
+    Returns:
+        Generated text string
+    """
+    # Set model config
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    model.generation_config.temperature = None
+    model.generation_config.top_p = None
+    model.generation_config.pad_token_id = tokenizer.eos_token_id
+    
+    # Tokenize and get positions
+    concatenated_text, segment_positions, question_group_ids, original_length = \
+        tokenize_prompt_parts(prompt_parts, tokenizer)
+    
+    # Store debug info if requested
+    if debug_info is not None:
+        debug_info['concatenated_text'] = concatenated_text
+        debug_info['segment_positions'] = segment_positions
+        debug_info['question_group_ids'] = question_group_ids.tolist()
+        debug_info['original_length'] = original_length
+    
+    # Tokenize input
+    inputs = tokenizer(
+        concatenated_text,
+        return_tensors="pt",
+        truncation=True,
+        add_special_tokens=True
+    ).to(model.device)
+    
+    # Set question_group_ids on model for mask generation
+    # Extend to cover potential generated tokens (set as group 0 to allow full attention)
+    max_length = inputs["input_ids"].shape[1] + max_new_tokens
+    extended_group_ids = torch.zeros(max_length, dtype=torch.long, device=model.device)
+    extended_group_ids[:len(question_group_ids)] = question_group_ids.to(model.device)
+    model.question_group_ids = extended_group_ids
+    
+    generated = None
+    
+    # Generation loop
+    for step in range(max_new_tokens):
+        # Forward pass
+        logits = model(inputs["input_ids"]).logits[:, -1, :]
+        
+        # Token selection (greedy)
+        next_token = torch.argmax(logits, dim=-1).unsqueeze(1)
+        inputs["input_ids"] = torch.cat([inputs["input_ids"], next_token], dim=1)
+        
+        if generated is None:
+            generated = next_token
+        else:
+            generated = torch.cat([generated, next_token], dim=1)
+        
+        # Check for EOS or newline
+        if next_token.item() == tokenizer.eos_token_id:
+            break
+        decoded_token = tokenizer.decode(next_token[0], skip_special_tokens=False)
+        if '\n' in decoded_token and step > 0:
+            break
+    
+    # Clear model's question_group_ids
+    model.question_group_ids = None
+    
+    # Decode output
+    if generated is None:
+        return ""
+    generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
+    return generated_texts[0].strip()
+
+
+# ==============================================================================
+# Debug visualization
+# ==============================================================================
+
+def visualize_custom_attention_mask(segment_positions, question_group_ids, tokenizer, sample_text):
+    """
+    Visualize the custom attention mask structure for debugging.
+    
+    Args:
+        segment_positions: List of (start, end) tuples
+        question_group_ids: Tensor of group IDs
+        tokenizer: Tokenizer for decoding
+        sample_text: The concatenated text
+        
+    Returns:
+        String representation of the mask structure
+    """
+    # Tokenize to get the actual tokens
+    tokens = tokenizer.encode(sample_text, add_special_tokens=True)
+    seq_len = len(tokens)
+    
+    lines = []
+    lines.append(f"\n{'='*80}")
+    lines.append(f"CUSTOM ATTENTION MASK VISUALIZATION")
+    lines.append(f"{'='*80}")
+    lines.append(f"Total tokens: {len(tokens)}")
+    
+    # Show segment structure
+    lines.append(f"\nSegment Structure:")
+    for i, (start, end) in enumerate(segment_positions):
+        group_name = "shared_part" if i == 0 else f"para_{i}"
+        lines.append(f"  {group_name}: tokens {start}-{end} (group {i})")
+    
+    # Show question_group_ids distribution
+    lines.append(f"\nQuestion Group IDs Distribution:")
+    unique_groups = torch.unique(question_group_ids[:seq_len])
+    for g in unique_groups.tolist():
+        count = (question_group_ids[:seq_len] == g).sum().item()
+        lines.append(f"  Group {g}: {count} tokens")
+    
+    # Build sample mask visualization for a few key positions
+    lines.append(f"\n{'='*80}")
+    lines.append(f"SAMPLE MASK VALUES")
+    lines.append(f"{'='*80}")
+    lines.append(f"Legend: ✓ = can attend, ✗ = blocked")
+    
+    # Sample query positions from each group
+    sample_positions = []
+    for i, (start, end) in enumerate(segment_positions):
+        mid = (start + end) // 2
+        sample_positions.append((mid, f"group_{i}"))
+    
+    # Create mask tensor for visualization
+    dtype = torch.float32
+    device = question_group_ids.device
+    struct_mask = build_question_struct_mask(question_group_ids, seq_len, seq_len, dtype, device)
+    
+    for q_pos, q_label in sample_positions:
+        lines.append(f"\nQuery position {q_pos} ({q_label}):")
+        row = "  "
+        # Sample key positions
+        key_samples = []
+        for i, (start, end) in enumerate(segment_positions):
+            key_samples.append((start, f"g{i}_start"))
+            key_samples.append(((start + end) // 2, f"g{i}_mid"))
+        
+        for k_pos, k_label in key_samples:
+            if k_pos < seq_len:
+                mask_val = struct_mask[0, 0, q_pos, k_pos].item()
+                can_attend = mask_val == 0
+                row += f"[{k_label}: {'✓' if can_attend else '✗'}] "
+        lines.append(row)
+    
+    lines.append(f"{'='*80}\n")
+    
+    return "\n".join(lines)
+
+
+# ==============================================================================
+# Main script
+# ==============================================================================
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="MyriadLAMA Custom Attention generation (without FlexAttention)"
+    )
+    parser.add_argument(
+        "--model", type=str, default="llama3.2_3b_it",
+        help="Model name from constants.MODEL_PATHs (must be LLaMA model)"
+    )
+    parser.add_argument(
+        "--device", type=str, default="auto",
+        help="Device for model (default: auto)"
+    )
+    parser.add_argument(
+        "--lemmaize", action="store_true",
+        help="Normalize predictions and answers to lemmas"
+    )
+    parser.add_argument(
+        "--num_paraphrases", type=int, default=5,
+        help="Number of paraphrases to use (default: 5)"
+    )
+    parser.add_argument(
+        "--max_samples", type=int, default=None,
+        help="Maximum number of samples to generate (default: None, process all)"
+    )
+    parser.add_argument(
+        "--rewrite", action="store_true",
+        help="Regenerate results even if output file already exists"
+    )
+    parser.add_argument(
+        "--disable_p2p", action="store_true",
+        help="Disable GPU peer-to-peer (P2P) access"
+    )
+    args = parser.parse_args()
+    
+    # Validate model is LLaMA
+    if args.model not in MODEL_PATHs:
+        raise ValueError(
+            f"Model {args.model} not supported. "
+            f"Choose from {list(MODEL_PATHs.keys())}"
+        )
+    
+    model_path = MODEL_PATHs.get(args.model, args.model)
+    
+    # Check if this is a LLaMA model
+    is_llama = "llama" in args.model.lower() or "llama" in model_path.lower()
+    if not is_llama:
+        print(f"⚠️  Warning: This script is optimized for LLaMA models.")
+        print(f"   Model '{args.model}' may not work correctly.")
+        print(f"   Qwen support is planned for future implementation.")
+    
+    # Load MyriadLAMA dataset
+    from dataset import MyriadLamaDataset
+    dataset = MyriadLamaDataset(model_name=args.model)
+    
+    # Use batch_size=1 for sequential processing
+    dataloader = dataset.get_dataloader(batch_size=1, shuffle=False)
+    
+    # Output file setup
+    local_output_dir = f"/net/tokyo100-10g/data/str01_01/y-guo/datasets/myriadlama/{args.model}"
+    os.makedirs(local_output_dir, exist_ok=True)
+    
+    # Determine file name
+    dump_file = f"{local_output_dir}/myriadlama_custom_{args.num_paraphrases}paras.feather"
+    
+    print(f"Output file: {dump_file}")
+    
+    # Lemmatization mode
+    if args.lemmaize:
+        assert os.path.exists(dump_file), \
+            f"File {dump_file} does not exist. Run without --lemmaize first."
+        
+        df = pd.read_feather(dump_file)
+        if "predict_lemma" in df.columns and "answer_lemmas" in df.columns:
+            print(f"Lemmatized data already exists in {dump_file}")
+            exit(0)
+        
+        chunks = np.array_split(df, num_parts)
+        with mp.get_context("spawn").Pool(num_parts, initializer=init_spacy) as pool:
+            results = pool.map(lemmaize_chunk, chunks)
+        
+        df = append_lemmas(df, results)
+        df.to_feather(dump_file)
+        
+        # Convert to CSV automatically
+        csv_file = dump_file.replace('.feather', '.csv')
+        df.to_csv(csv_file, index=False)
+        print(f"✅ CSV file saved to {csv_file}")
+        
+        exit(0)
+    
+    # Check if file exists
+    if os.path.exists(dump_file) and not args.rewrite:
+        print(f"File {dump_file} already exists, skipping generation.")
+        print("Use --rewrite flag to regenerate.")
+        exit(0)
+    
+    # Optional: disable P2P before any CUDA allocations
+    if args.disable_p2p:
+        os.environ["TORCH_CUDA_DISABLE_P2P"] = "1"
+        os.environ["NCCL_P2P_DISABLE"] = "1"
+        print("🔧 Disabled CUDA/NCCL peer-to-peer")
+    
+    # Load model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    
+    if args.device == "auto":
+        print("📦 Loading model with device_map='auto'")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, device_map="auto", torch_dtype="auto"
+        )
+    else:
+        target_device = args.device
+        print(f"📦 Loading full model onto single device: {target_device}")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, torch_dtype="auto"
+        )
+        try:
+            model.to(target_device)
+        except Exception as e:
+            print(f"❌ Failed to move model to {target_device}: {type(e).__name__}: {e}")
+            fallback = "cuda:0" if torch.cuda.is_available() else "cpu"
+            model.to(fallback)
+            print(f"   Moved model to {fallback}")
+    
+    tokenizer.pad_token = tokenizer.eos_token
+    
+    # Force eager attention for explicit mask usage
+    model.config._attn_implementation = "eager"
+    print(f"🔧 Set attention implementation to 'eager'")
+    
+    # Install custom attention mask hook
+    print(f"🔧 Installing custom structure mask for LLaMA model...")
+    install_llama_struct_mask(model)
+    
+    # Print model info
+    print(f"🔍 Model: {args.model}")
+    print(f"   PyTorch version: {torch.__version__}")
+    print(f"   Using Custom Attention (no FlexAttention)")
+    print(f"   Using {args.num_paraphrases} paraphrases per question")
+    if hasattr(model.config, 'num_attention_heads'):
+        print(f"   Attention heads: {model.config.num_attention_heads}")
+    
+    # Get few-shot examples
+    few_shot_examples = get_few_shot_examples_with_paraphrases(
+        dataset, 
+        k=5, 
+        num_fs_paraphrases=args.num_paraphrases,
+        seed=42
+    )
+    instruction = dataset.instruction
+    
+    # DataFrame initialization
+    df = pd.DataFrame(columns=[
+        "uuid", "answers", "prediction", "generation", "templates",
+        "debug_prompt", "debug_mask"
+    ])
+    
+    print(f"\nMyriadLAMA generation with Custom Attention")
+    if args.max_samples:
+        print(f"Processing maximum {args.max_samples} samples")
+    
+    # Main generation loop
+    sample_count = 0
+    total_iterations = args.max_samples if args.max_samples else len(dataset.ds)
+    
+    for uuids, answers, all_paraphrases in tqdm(dataloader, total=total_iterations):
+        batch_predictions = []
+        batch_generations = []
+        batch_templates = []
+        batch_debug_prompt = []
+        batch_debug_mask = []
+        
+        # Process each question in batch
+        for i, paraphrases in enumerate(zip(*all_paraphrases)):
+            # Select paraphrases
+            all_templates = list(paraphrases)
+            selected_templates = all_templates[:args.num_paraphrases]
+            
+            # Construct prompt parts
+            prompt_parts = construct_prompt_new_format(
+                instruction,
+                few_shot_examples,
+                selected_templates
+            )
+            
+            # Prepare debug info container
+            debug_info = {} if sample_count < 5 else None
+            
+            # Generate
+            generation = myriadlama_custom_attention_generation(
+                model,
+                tokenizer,
+                prompt_parts,
+                max_new_tokens=10,
+                debug_info=debug_info
+            )
+            
+            # Extract prediction (first word only)
+            prediction = generation.strip().split()[0] if generation.strip() else ""
+            
+            batch_predictions.append(prediction)
+            batch_generations.append(generation)
+            batch_templates.append(selected_templates)
+            
+            # Collect debug info for first 5 samples
+            if debug_info:
+                # Full prompt
+                full_prompt = prompt_parts[0] + "\n".join(prompt_parts[1:])
+                batch_debug_prompt.append(full_prompt)
+                
+                # Create attention mask visualization
+                mask_viz = visualize_custom_attention_mask(
+                    debug_info['segment_positions'],
+                    torch.tensor(debug_info['question_group_ids']),
+                    tokenizer,
+                    debug_info['concatenated_text']
+                )
+                batch_debug_mask.append(mask_viz)
+                
+                # Print for first 5 samples
+                print(f"\n{'='*80}")
+                print(f"SAMPLE {sample_count + 1} DEBUG OUTPUT")
+                print(f"{'='*80}")
+                print(f"UUID: {uuids[i] if isinstance(uuids, list) else uuids}")
+                print(f"Prompt Parts: {len(prompt_parts)}")
+                print(f"Generation: {generation}")
+                print(mask_viz)
+            else:
+                batch_debug_prompt.append("")
+                batch_debug_mask.append("")
+        
+        # Store results
+        items = {
+            "uuid": uuids,
+            "templates": batch_templates,
+            "answers": answers,
+            "prediction": batch_predictions,
+            "generation": batch_generations,
+            "debug_prompt": batch_debug_prompt,
+            "debug_mask": batch_debug_mask,
+        }
+        df = pd.concat([df, pd.DataFrame(items)], ignore_index=True)
+        
+        # Check if we've reached max_samples
+        sample_count += len(uuids)
+        if args.max_samples and sample_count >= args.max_samples:
+            print(f"Reached max_samples limit ({args.max_samples}), stopping generation")
+            break
+    
+    # Save results
+    df.to_feather(dump_file)
+    print(f"✅ Results saved to {dump_file}")
+    
+    # Convert to CSV automatically
+    csv_file = dump_file.replace('.feather', '.csv')
+    df.to_csv(csv_file, index=False)
+    print(f"✅ CSV file saved to {csv_file}")
