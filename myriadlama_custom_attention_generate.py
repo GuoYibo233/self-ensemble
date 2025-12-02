@@ -329,6 +329,15 @@ def install_llama_struct_mask(model):
         original_update_fn: The original _update_causal_mask function for restoration
     """
     base: LlamaModel = model.model
+    
+    # Check if _update_causal_mask exists (may differ between transformers versions)
+    if not hasattr(base, '_update_causal_mask'):
+        raise AttributeError(
+            f"LlamaModel does not have '_update_causal_mask' method. "
+            f"This may be due to a different transformers version. "
+            f"Available methods: {[m for m in dir(base) if 'mask' in m.lower()]}"
+        )
+    
     old_update = base._update_causal_mask
     
     def _update_causal_mask_patch(attention_mask, input_tensor, cache_position,
