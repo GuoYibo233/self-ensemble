@@ -28,10 +28,11 @@ import pandas as pd
 from tqdm import tqdm
 import multiprocessing as mp
 import warnings
-
+import inspect
+import types
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
+from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 from constants import MODEL_PATHs
 
 # Try to import FlexAttention
@@ -138,24 +139,21 @@ def get_few_shot_examples_with_paraphrases(dataset, k=5, num_fs_paraphrases=3, s
 
 def construct_prompt_new_format(instruction, few_shot_examples, question_paraphrases):
     """
-    Construct a prompt in the new format with ALL question paraphrases.
+    Construct prompt parts: one shared part + multiple paraphrase parts.
     
-    Format:
+    Returns a list where:
+    - First element: shared part (instruction + few-shot examples)
+    - Remaining elements: individual paraphrase parts (one per paraphrase)
+    
+    Shared part format:
     {instruction}
     
-    Q: {fs1_para1}
-    Q: {fs1_para2}
-    Q: {fs1_para3}
-    A: {fs1_answer}
+    Q: {fs1_para1} A: {fs1_answer}
+    Q: {fs2_para1} A: {fs2_answer}
+    Q: {fs3_para1} A: {fs3_answer}
     
-    Q: {fs2_para1}
-    Q: {fs2_para2}
-    Q: {fs2_para3}
-    A: {fs2_answer}
-    
-    Q: {main_question_paraphrase1} A:
-    Q: {main_question_paraphrase2} A:
-    Q: {main_question_paraphrase3} A:
+    Each paraphrase part format:
+    Q: {main_question_paraphrase} A:
     
     Args:
         instruction: Instruction string
@@ -163,27 +161,36 @@ def construct_prompt_new_format(instruction, few_shot_examples, question_paraphr
         question_paraphrases: List of all main question paraphrase strings
         
     Returns:
-        Single prompt string
+        List of strings: [shared_part, para_part_1, para_part_2, ...]
     """
-    prompt_parts = [instruction]
+    # Build shared part: instruction + few-shot examples
+    shared_parts = []
     
-    # Add few-shot examples
+    # Add instruction with trailing newline
+    shared_parts.append(instruction + "\n")
+    
+    # Add few-shot examples (each on one line: Q: ... A: ...)
+    fs_lines = []
     for fs_example in few_shot_examples:
-        fs_parts = []
-        # Add all paraphrase questions
-        for para in fs_example['paraphrases']:
-            fs_parts.append(f"Q: {para}")
-        # Add answer
-        fs_parts.append(f"A: {fs_example['answer']}")
-        prompt_parts.append("\n".join(fs_parts))
+        # Use only the FIRST paraphrase from each few-shot example
+        para = fs_example['paraphrases'][0]
+        answer = fs_example['answer']
+        fs_lines.append(f"Q: {para} A: {answer}")
     
-    # Add ALL main question paraphrases - EACH WITH ITS OWN A:
-    main_q_parts = []
+    # Join few-shot lines with newlines, add trailing newline
+    shared_parts.append("\n".join(fs_lines) + "\n")
+    
+    # Combine shared parts
+    shared_part = "\n".join(shared_parts)
+    
+    # Build individual paraphrase parts
+    para_parts = []
     for para in question_paraphrases:
-        main_q_parts.append(f"Q: {para} A:")
-    prompt_parts.append("\n".join(main_q_parts))
+        para_part = f"Q: {para} A:"
+        para_parts.append(para_part)
     
-    return "\n\n".join(prompt_parts)
+    # Return list: [shared_part, para_part_1, para_part_2, ...]
+    return [shared_part] + para_parts
 
 
 # ==============================================================================
@@ -1284,13 +1291,18 @@ if __name__ == "__main__":
                 all_templates = list(paraphrases)
                 selected_templates = all_templates[:args.num_paraphrases]
                 
-                # Construct ONE prompt with ALL question paraphrases (NEW FORMAT)
-                # Prompt has: instruction + few-shot examples + ALL main question paraphrases
-                prompt = construct_prompt_new_format(
+                # Construct prompt parts: [shared_part, para_part_1, para_part_2, ...]
+                # shared_part = instruction + few-shot examples
+                # para_part_i = "Q: {paraphrase_i} A:"
+                prompt_parts = construct_prompt_new_format(
                     instruction,
                     few_shot_examples,
-                    selected_templates  # Pass ALL paraphrases, not just one
+                    selected_templates  # Pass ALL paraphrases
                 )
+                
+                # Combine parts into full prompt for generation
+                # Format: shared_part + para_part_1 + para_part_2 + ...
+                prompt = prompt_parts[0] + "\n".join(prompt_parts[1:])
                 
                 # Prepare debug info container
                 debug_info = {} if sample_count < 5 else None
@@ -1420,12 +1432,15 @@ if __name__ == "__main__":
                     
                     # Generate for EACH paraphrase separately
                     for para_idx, paraphrase in enumerate(selected_templates):
-                        # Construct prompt with ONE paraphrase only
-                        prompt = construct_prompt_new_format(
+                        # Construct prompt parts with ONE paraphrase only
+                        prompt_parts = construct_prompt_new_format(
                             instruction,
                             few_shot_examples,
                             [paraphrase]  # Only one paraphrase
                         )
+                        
+                        # Combine parts into full prompt
+                        prompt = prompt_parts[0] + prompt_parts[1]  # shared + single para
                         
                         # Generate using baseline method (no flex attention)
                         generation = myriadlama_baseline_generation(
