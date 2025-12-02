@@ -6,7 +6,7 @@ designed for the MyriadLAMA dataset.
 
 Key features:
 - Uses HuggingFace's native attention mask mechanism
-- Patches LLaMA's _update_causal_mask to inject custom structure masks
+- Patches LlamaDecoderLayer.forward to inject custom structure masks
 - Implements segment-based masking where:
   * Causal mask is always applied
   * Shared part (instruction + few-shot) uses normal causal attention
