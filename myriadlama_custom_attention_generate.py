@@ -1,8 +1,8 @@
 """
-MyriadLama Custom Attention Generation (without FlexAttention).
+MyriadLama Custom Attention Generation.
 
 This script implements a custom attention-based ensemble generation specifically
-designed for the MyriadLAMA dataset, without using FlexAttention.
+designed for the MyriadLAMA dataset.
 
 Key features:
 - Uses HuggingFace's native attention mask mechanism
@@ -46,7 +46,7 @@ from constants import MODEL_PATHs
 warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
 
 # ==============================================================================
-# REUSED FROM myriadlama_flex_attention_generate.py - Lemmatization functions
+# Lemmatization functions
 # ==============================================================================
 
 nlp = None
@@ -89,7 +89,7 @@ def append_lemmas(df, results):
 
 
 # ==============================================================================
-# REUSED FROM myriadlama_flex_attention_generate.py - Prompt construction
+# Prompt construction
 # ==============================================================================
 
 def get_few_shot_examples_with_paraphrases(dataset, k=5, num_fs_paraphrases=3, seed=42):
@@ -614,7 +614,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="MyriadLAMA Custom Attention generation (without FlexAttention)"
+        description="MyriadLAMA Custom Attention generation"
     )
     parser.add_argument(
         "--model", type=str, default="llama3.2_3b_it",
@@ -762,7 +762,7 @@ if __name__ == "__main__":
     # Print model info
     print(f"🔍 Model: {args.model}")
     print(f"   PyTorch version: {torch.__version__}")
-    print(f"   Using Custom Attention (no FlexAttention)")
+    print(f"   Using Custom Attention")
     print(f"   Using {args.num_paraphrases} paraphrases per question")
     if hasattr(model.config, 'num_attention_heads'):
         print(f"   Attention heads: {model.config.num_attention_heads}")
