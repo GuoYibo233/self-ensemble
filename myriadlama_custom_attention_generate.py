@@ -309,105 +309,160 @@ def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
 
 
 # ==============================================================================
-# NEW - LLaMA model patching (per reference document)
+# LLaMA model patching - supports multiple transformers versions
 # ==============================================================================
 
 def install_llama_struct_mask(model):
     """
     Install custom structure mask for LLaMA model.
     
-    Wraps LlamaModel._update_causal_mask to add our custom structure mask
-    on top of the base causal mask.
-    
-    Note: This patches a private method (_update_causal_mask) which may change
-    in future versions of transformers. Tested with transformers >= 4.30.0.
+    Supports multiple transformers versions:
+    - For transformers < 4.55: patches LlamaModel._update_causal_mask
+    - For transformers >= 4.55: patches each LlamaDecoderLayer.forward
     
     Args:
         model: HuggingFace LlamaForCausalLM model
         
     Returns:
-        original_update_fn: The original _update_causal_mask function for restoration
+        dict with patching info for restoration
     """
+    from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+    
     base: LlamaModel = model.model
+    patch_info = {'method': None, 'originals': {}}
     
-    # Check if _update_causal_mask exists (may differ between transformers versions)
-    if not hasattr(base, '_update_causal_mask'):
-        raise AttributeError(
-            f"LlamaModel does not have '_update_causal_mask' method. "
-            f"This may be due to a different transformers version. "
-            f"Available methods: {[m for m in dir(base) if 'mask' in m.lower()]}"
-        )
-    
-    old_update = base._update_causal_mask
-    
-    def _update_causal_mask_patch(attention_mask, input_tensor, cache_position,
-                                  past_key_values, output_attentions):
-        # Get base 4D mask: [B, 1, Q, K]
-        causal_mask = old_update(attention_mask, input_tensor,
-                                 cache_position, past_key_values,
-                                 output_attentions)
-        if causal_mask is None:
-            return None  # SDPA path; with eager this should not happen
+    # Try the old API first (_update_causal_mask)
+    if hasattr(base, '_update_causal_mask'):
+        patch_info['method'] = '_update_causal_mask'
+        old_update = base._update_causal_mask
+        patch_info['originals']['_update_causal_mask'] = old_update
         
-        # Check if model has question_group_ids set
-        if not hasattr(model, 'question_group_ids') or model.question_group_ids is None:
-            return causal_mask
+        def _update_causal_mask_patch(attention_mask, input_tensor, cache_position,
+                                      past_key_values, output_attentions):
+            # Get base 4D mask: [B, 1, Q, K]
+            causal_mask = old_update(attention_mask, input_tensor,
+                                     cache_position, past_key_values,
+                                     output_attentions)
+            if causal_mask is None:
+                return None  # SDPA path; with eager this should not happen
+            
+            # Check if model has question_group_ids set
+            if not hasattr(model, 'question_group_ids') or model.question_group_ids is None:
+                return causal_mask
+            
+            B, H1, Q, K = causal_mask.shape
+            if B != 1:
+                raise ValueError(
+                    f"MyriadLAMA pipeline requires batch_size=1, got batch_size={B}. "
+                    "Please use batch_size=1 in your dataloader."
+                )
+            
+            # Build structure mask
+            struct_mask = build_question_struct_mask(
+                model.question_group_ids, Q, K,
+                dtype=causal_mask.dtype,
+                device=causal_mask.device,
+            )  # [1, 1, Q, K]
+            
+            if H1 > 1:
+                struct_mask = struct_mask.expand(B, H1, Q, K)
+            
+            # Add structure mask to causal mask (additive masking)
+            return causal_mask + struct_mask
         
-        B, H1, Q, K = causal_mask.shape
-        if B != 1:
-            raise ValueError(
-                f"MyriadLAMA pipeline requires batch_size=1, got batch_size={B}. "
-                "Please use batch_size=1 in your dataloader."
-            )
-        
-        # Build structure mask
-        struct_mask = build_question_struct_mask(
-            model.question_group_ids, Q, K,
-            dtype=causal_mask.dtype,
-            device=causal_mask.device,
-        )  # [1, 1, Q, K]
-        
-        if H1 > 1:
-            struct_mask = struct_mask.expand(B, H1, Q, K)
-        
-        # Add structure mask to causal mask (additive masking)
-        return causal_mask + struct_mask
+        base._update_causal_mask = _update_causal_mask_patch
+        model._llama_patch_info = patch_info
+        return patch_info
     
-    base._update_causal_mask = _update_causal_mask_patch
+    # For transformers >= 4.55, patch each decoder layer's forward
+    patch_info['method'] = 'decoder_layer'
     
-    # Store original function on model for easy restoration
-    model._original_update_causal_mask = old_update
+    for layer_idx, layer in enumerate(base.layers):
+        if not isinstance(layer, LlamaDecoderLayer):
+            continue
+            
+        old_forward = layer.forward
+        patch_info['originals'][layer_idx] = old_forward
+        
+        def make_patched_forward(old_fwd, idx):
+            def patched_forward(
+                hidden_states,
+                attention_mask=None,
+                position_ids=None,
+                past_key_value=None,
+                output_attentions=False,
+                use_cache=False,
+                cache_position=None,
+                position_embeddings=None,
+                **kwargs
+            ):
+                # Modify attention_mask if we have custom structure
+                if attention_mask is not None and attention_mask.dim() == 4:
+                    if hasattr(model, 'question_group_ids') and model.question_group_ids is not None:
+                        B, H1, Q, K = attention_mask.shape
+                        if B == 1:
+                            struct_mask = build_question_struct_mask(
+                                model.question_group_ids, Q, K,
+                                dtype=attention_mask.dtype,
+                                device=attention_mask.device,
+                            )
+                            if H1 > 1:
+                                struct_mask = struct_mask.expand(B, H1, Q, K)
+                            attention_mask = attention_mask + struct_mask
+                
+                return old_fwd(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_value=past_key_value,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
+                    **kwargs
+                )
+            return patched_forward
+        
+        layer.forward = make_patched_forward(old_forward, layer_idx)
     
-    return old_update
+    model._llama_patch_info = patch_info
+    return patch_info
 
 
-def uninstall_llama_struct_mask(model, original_update_fn=None):
+def uninstall_llama_struct_mask(model, patch_info=None):
     """
-    Restore original _update_causal_mask for LLaMA model.
+    Restore original functions for LLaMA model.
     
     Args:
         model: HuggingFace LlamaForCausalLM model
-        original_update_fn: Original _update_causal_mask function (optional, 
-                           can be retrieved from model._original_update_causal_mask)
+        patch_info: Patch info dict (optional, can be retrieved from model._llama_patch_info)
     """
-    if original_update_fn is None:
-        if hasattr(model, '_original_update_causal_mask'):
-            original_update_fn = model._original_update_causal_mask
+    if patch_info is None:
+        if hasattr(model, '_llama_patch_info'):
+            patch_info = model._llama_patch_info
         else:
             raise ValueError(
-                "Cannot restore original function: original_update_fn not provided "
-                "and model._original_update_causal_mask not found"
+                "Cannot restore original functions: patch_info not provided "
+                "and model._llama_patch_info not found"
             )
     
-    model.model._update_causal_mask = original_update_fn
+    base = model.model
+    
+    if patch_info['method'] == '_update_causal_mask':
+        if '_update_causal_mask' in patch_info['originals']:
+            base._update_causal_mask = patch_info['originals']['_update_causal_mask']
+    elif patch_info['method'] == 'decoder_layer':
+        for layer_idx, old_forward in patch_info['originals'].items():
+            if isinstance(layer_idx, int):
+                base.layers[layer_idx].forward = old_forward
     
     # Clean up stored reference
-    if hasattr(model, '_original_update_causal_mask'):
-        del model._original_update_causal_mask
+    if hasattr(model, '_llama_patch_info'):
+        del model._llama_patch_info
 
 
 # ==============================================================================
-# NEW - Qwen model patching placeholder (per reference document)
+# Qwen model patching placeholder
 # ==============================================================================
 
 def install_qwen_struct_mask(model):
@@ -766,7 +821,8 @@ if __name__ == "__main__":
     
     # Install custom attention mask hook
     print(f"🔧 Installing custom structure mask for LLaMA model...")
-    original_update_fn = install_llama_struct_mask(model)
+    patch_info = install_llama_struct_mask(model)
+    print(f"   Patching method: {patch_info['method']}")
     
     # Print model info
     print(f"🔍 Model: {args.model}")
