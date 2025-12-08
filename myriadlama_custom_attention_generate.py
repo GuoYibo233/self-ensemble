@@ -476,7 +476,8 @@ def myriadlama_custom_attention_generation(
     tokenizer,
     prompt_parts,
     max_new_tokens=50,
-    debug_info=None
+    debug_info=None,
+    use_normal_attention=False
 ):
     """
     Generate text using custom attention masking for MyriadLAMA.
@@ -527,7 +528,8 @@ def myriadlama_custom_attention_generation(
     extended_group_ids = torch.zeros(max_length, dtype=torch.long, device=model.device)
     extended_group_ids[:len(question_group_ids)] = question_group_ids.to(model.device)
     # 
-    model.question_group_ids = extended_group_ids
+    if not use_normal_attention:
+        model.question_group_ids = extended_group_ids
     # 
     generated = None
     
@@ -676,7 +678,7 @@ if __name__ == "__main__":
         help="Normalize predictions and answers to lemmas"
     )
     parser.add_argument(
-        "--num_paraphrases", type=int, default=2,
+        "--num_paraphrases", type=int, default=1,
         help="Number of paraphrases to use (default: 2)"
     )
     parser.add_argument(
@@ -690,6 +692,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--disable_p2p", action="store_true",
         help="Disable GPU peer-to-peer (P2P) access"
+    )
+    parser.add_argument(
+        "-n", "--normal_attention", action="store_true",
+        help="Use normal causal attention instead of custom structured attention"
     )
     args = parser.parse_args()
     
@@ -799,14 +805,18 @@ if __name__ == "__main__":
     print(f"🔧 Set attention implementation to 'eager'")
     
     # Install custom attention mask hook
-    print(f"🔧 Installing custom structure mask for LLaMA model...")
-    patch_info = install_llama_struct_mask(model)
-    print(f"   Patching method: {patch_info['method']}")
+    if not args.normal_attention:
+        print(f"🔧 Installing custom structure mask for LLaMA model...")
+        patch_info = install_llama_struct_mask(model)
+        print(f"   Patching method: {patch_info['method']}")
+    else:
+        print(f"🔧 Using normal causal attention (custom attention disabled)")
     
     # Print model info
     print(f"🔍 Model: {args.model}")
     print(f"   PyTorch version: {torch.__version__}")
-    print(f"   Using Custom Attention")
+    attention_type = "Normal Causal Attention" if args.normal_attention else "Custom Structured Attention"
+    print(f"   Attention Type: {attention_type}")
     print(f"   Using {args.num_paraphrases} paraphrases per question")
     if hasattr(model.config, 'num_attention_heads'):
         print(f"   Attention heads: {model.config.num_attention_heads}")
@@ -863,7 +873,8 @@ if __name__ == "__main__":
                 tokenizer,
                 prompt_parts,
                 max_new_tokens=50,
-                debug_info=debug_info
+                debug_info=debug_info,
+                use_normal_attention=args.normal_attention
             )
             
             # Extract prediction (first word only)
