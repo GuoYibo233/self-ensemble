@@ -194,19 +194,20 @@ def construct_prompt_new_format(instruction, few_shot_examples, question_paraphr
     return [shared_part] + para_parts
 
 
-def tokenize_prompt_parts(prompt_parts, tokenizer):
+def tokenize_prompt_parts(prompt_parts, tokenizer, add_special_tokens=True):
     """
     Tokenize prompt parts and track positions for each segment.
     
     Args:
         prompt_parts: List of strings [shared_part, para_part_1, para_part_2, ...]
         tokenizer: HuggingFace tokenizer
+        add_special_tokens: Whether to add BOS/EOS tokens (default: True)
         
     Returns:
-        concatenated_text: Single concatenated string
-        segment_positions: List of (start, end) tuples for each segment
+        input_ids: Tensor of token IDs [1, seq_len]
+        segment_positions: List of (start, end) tuples for each segment (after special tokens)
         question_group_ids: Tensor of group IDs for each token position
-        total_length: Total number of tokens
+        total_length: Total number of tokens (including special tokens)
     """
     # Tokenize each part individually
     tokenized_parts = []
@@ -221,6 +222,11 @@ def tokenize_prompt_parts(prompt_parts, tokenizer):
     full_tokens = []
     segment_positions = []
     current_pos = 0
+    
+    # Add BOS token if needed
+    if add_special_tokens and tokenizer.bos_token_id is not None:
+        full_tokens.append(tokenizer.bos_token_id)
+        current_pos = 1
     
     for i, tokens in enumerate(tokenized_parts):
         if i > 0:
@@ -243,19 +249,21 @@ def tokenize_prompt_parts(prompt_parts, tokenizer):
     total_length = len(full_tokens)
     question_group_ids = torch.zeros(total_length, dtype=torch.long)
     
+    # BOS token (if exists) belongs to group 0
     for group_idx, (start, end) in enumerate(segment_positions):
         question_group_ids[start:end] = group_idx
     
-    # Decode back to text
-    concatenated_text = tokenizer.decode(full_tokens, skip_special_tokens=False)
+    # Convert to tensor
+    input_ids = torch.tensor([full_tokens], dtype=torch.long)
     
-    return concatenated_text, segment_positions, question_group_ids, total_length
+    return input_ids, segment_positions, question_group_ids, total_length
 
 
 # ==============================================================================
 # NEW - Custom attention mask building (per reference document)
 # ==============================================================================
 
+from pdb import set_trace
 def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
     """
     Build the per-query structure mask [1, 1, Q, K].
@@ -276,6 +284,7 @@ def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
     Returns:
         [1, 1, Q, K] additive mask (0 or -inf)
     """
+
     neg_inf = torch.finfo(dtype).min
     
     # Ensure question_group_ids is on the correct device
@@ -304,7 +313,7 @@ def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
     # Create mask: 0 for allowed, -inf for blocked
     mask = torch.zeros((1, 1, Q, K), device=device, dtype=dtype)
     mask = mask.masked_fill(~allowed, neg_inf)
-    
+    print()
     return mask
 
 
@@ -330,6 +339,9 @@ def install_llama_struct_mask(model):
     base: LlamaModel = model.model
     patch_info = {'method': 'decoder_layer', 'originals': {}}
     
+    # Initialize cache for struct masks
+    model._struct_mask_cache = {}
+    
     for layer_idx, layer in enumerate(base.layers):
         if not isinstance(layer, LlamaDecoderLayer):
             continue
@@ -354,11 +366,21 @@ def install_llama_struct_mask(model):
                     if hasattr(model, 'question_group_ids') and model.question_group_ids is not None:
                         B, H1, Q, K = attention_mask.shape
                         if B == 1:
-                            struct_mask = build_question_struct_mask(
-                                model.question_group_ids, Q, K,
-                                dtype=attention_mask.dtype,
-                                device=attention_mask.device,
-                            )
+                            # Use cache to avoid recomputing mask
+                            cache_key = (Q, K, attention_mask.dtype, attention_mask.device)
+                            
+                            if cache_key not in model._struct_mask_cache:
+                                # First time: compute and cache
+                                struct_mask = build_question_struct_mask(
+                                    model.question_group_ids, Q, K,
+                                    dtype=attention_mask.dtype,
+                                    device=attention_mask.device,
+                                )
+                                model._struct_mask_cache[cache_key] = struct_mask
+                            else:
+                                # Use cached mask
+                                struct_mask = model._struct_mask_cache[cache_key]
+                            
                             if H1 > 1:
                                 struct_mask = struct_mask.expand(B, H1, Q, K)
                             attention_mask = attention_mask + struct_mask
@@ -482,37 +504,37 @@ def myriadlama_custom_attention_generation(
     model.generation_config.top_p = None
     model.generation_config.pad_token_id = tokenizer.eos_token_id
     
-    # Tokenize and get positions
-    concatenated_text, segment_positions, question_group_ids, original_length = \
-        tokenize_prompt_parts(prompt_parts, tokenizer)
+    # Tokenize and get positions (now returns input_ids directly)
+    input_ids, segment_positions, question_group_ids, total_length = \
+        tokenize_prompt_parts(prompt_parts, tokenizer, add_special_tokens=True)
+    
+    # Move to device
+    input_ids = input_ids.to(model.device)
     
     # Store debug info if requested
     if debug_info is not None:
-        debug_info['concatenated_text'] = concatenated_text
+        debug_info['input_ids'] = input_ids.tolist()
         debug_info['segment_positions'] = segment_positions
         debug_info['question_group_ids'] = question_group_ids.tolist()
-        debug_info['original_length'] = original_length
+        debug_info['total_length'] = total_length
     
-    # Tokenize input
-    inputs = tokenizer(
-        concatenated_text,
-        return_tensors="pt",
-        truncation=True,
-        add_special_tokens=True
-    ).to(model.device)
+    inputs = {"input_ids": input_ids}
     
     # Set question_group_ids on model for mask generation
     # Extend to cover potential generated tokens (set as group 0 to allow full attention)
     max_length = inputs["input_ids"].shape[1] + max_new_tokens
+    # 
     extended_group_ids = torch.zeros(max_length, dtype=torch.long, device=model.device)
     extended_group_ids[:len(question_group_ids)] = question_group_ids.to(model.device)
+    # 
     model.question_group_ids = extended_group_ids
-    
+    # 
     generated = None
     
     # Generation loop
     for step in range(max_new_tokens):
         # Forward pass
+        
         logits = model(inputs["input_ids"]).logits[:, -1, :]
         
         # Token selection (greedy)
@@ -531,8 +553,10 @@ def myriadlama_custom_attention_generation(
         if '\n' in decoded_token and step > 0:
             break
     
-    # Clear model's question_group_ids
+    # Clear model's question_group_ids and cache
     model.question_group_ids = None
+    if hasattr(model, '_struct_mask_cache'):
+        model._struct_mask_cache.clear()
     
     # Decode output
     if generated is None:
@@ -545,7 +569,7 @@ def myriadlama_custom_attention_generation(
 # Debug visualization
 # ==============================================================================
 
-def visualize_custom_attention_mask(segment_positions, question_group_ids, tokenizer, sample_text):
+def visualize_custom_attention_mask(segment_positions, question_group_ids, tokenizer, input_ids=None):
     """
     Visualize the custom attention mask structure for debugging.
     
@@ -553,20 +577,25 @@ def visualize_custom_attention_mask(segment_positions, question_group_ids, token
         segment_positions: List of (start, end) tuples
         question_group_ids: Tensor of group IDs
         tokenizer: Tokenizer for decoding
-        sample_text: The concatenated text
+        input_ids: Token IDs (list or tensor)
         
     Returns:
         String representation of the mask structure
     """
-    # Tokenize to get the actual tokens
-    tokens = tokenizer.encode(sample_text, add_special_tokens=True)
-    seq_len = len(tokens)
+    # Get sequence length
+    if input_ids is not None:
+        if isinstance(input_ids, list):
+            seq_len = len(input_ids)
+        else:
+            seq_len = len(input_ids) if input_ids.dim() == 1 else input_ids.shape[1]
+    else:
+        seq_len = len(question_group_ids)
     
     lines = []
     lines.append(f"\n{'='*80}")
     lines.append(f"CUSTOM ATTENTION MASK VISUALIZATION")
     lines.append(f"{'='*80}")
-    lines.append(f"Total tokens: {len(tokens)}")
+    lines.append(f"Total tokens: {seq_len}")
     
     # Show segment structure
     lines.append(f"\nSegment Structure:")
@@ -650,11 +679,11 @@ if __name__ == "__main__":
         help="Number of paraphrases to use (default: 5)"
     )
     parser.add_argument(
-        "--max_samples", type=int, default=None,
+        "--max_samples", type=int, default=1,
         help="Maximum number of samples to generate (default: None, process all)"
     )
     parser.add_argument(
-        "--rewrite", action="store_true",
+        "--rewrite", action="store_true",default=True,
         help="Regenerate results even if output file already exists"
     )
     parser.add_argument(
@@ -854,7 +883,7 @@ if __name__ == "__main__":
                     debug_info['segment_positions'],
                     torch.tensor(debug_info['question_group_ids']),
                     tokenizer,
-                    debug_info['concatenated_text']
+                    input_ids=debug_info['input_ids'][0] if debug_info['input_ids'] else None
                 )
                 batch_debug_mask.append(mask_viz)
                 
