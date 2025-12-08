@@ -475,7 +475,7 @@ def myriadlama_custom_attention_generation(
     model,
     tokenizer,
     prompt_parts,
-    max_new_tokens=10,
+    max_new_tokens=50,
     debug_info=None
 ):
     """
@@ -551,7 +551,8 @@ def myriadlama_custom_attention_generation(
             break
         decoded_token = tokenizer.decode(next_token[0], skip_special_tokens=False)
         if '\n' in decoded_token and step > 0:
-            break
+            # break
+            pass
     
     # Clear model's question_group_ids and cache
     model.question_group_ids = None
@@ -675,11 +676,11 @@ if __name__ == "__main__":
         help="Normalize predictions and answers to lemmas"
     )
     parser.add_argument(
-        "--num_paraphrases", type=int, default=5,
-        help="Number of paraphrases to use (default: 5)"
+        "--num_paraphrases", type=int, default=2,
+        help="Number of paraphrases to use (default: 2)"
     )
     parser.add_argument(
-        "--max_samples", type=int, default=1,
+        "--max_samples", type=int, default=10,
         help="Maximum number of samples to generate (default: None, process all)"
     )
     parser.add_argument(
@@ -861,7 +862,7 @@ if __name__ == "__main__":
                 model,
                 tokenizer,
                 prompt_parts,
-                max_new_tokens=10,
+                max_new_tokens=50,
                 debug_info=debug_info
             )
             
