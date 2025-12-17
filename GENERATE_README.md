@@ -1,82 +1,87 @@
 # Generate Scripts - Usage Guide
 
-本项目包含四个不同的生成脚本，每个脚本实现了不同的生成方法。本文档介绍所有generate文件的区别和使用方法。
+This project contains four different generation scripts, each implementing a different generation method. This document explains the differences between all generate scripts and how to use them.
 
-## 📋 脚本概览
+## 📋 Scripts Overview
 
-| 脚本 | 用途 | 数据集 | 方法类型 |
-|------|------|--------|---------|
-| `generate_baseline.py` | 基准测试 | WebQA | 单独生成（origin/per_prompt） |
-| `generate_original.py` | 原始集成方法 | WebQA | Logit级融合（max/avg/weighted） |
-| `generate_flex_attention.py` | FlexAttention集成 | WebQA | Attention级融合 |
-| `generate_myriadlama.py` | MyriadLAMA特定方法 | MyriadLAMA | FlexAttention（针对填空任务） |
+| Script | Purpose | Dataset | Method Type |
+|--------|---------|---------|-------------|
+| `generate_baseline.py` | Baseline testing | WebQA | Individual generation (origin/per_prompt) |
+| `generate_original.py` | Original ensemble methods | WebQA | Logit-level fusion (max/avg/weighted) |
+| `generate_flex_attention.py` | FlexAttention ensemble | WebQA | Attention-level fusion |
+| `generate_myriadlama.py` | MyriadLAMA-specific method | MyriadLAMA | FlexAttention (for fill-in-the-blank) |
 
 ---
 
-## 1. generate_baseline.py - 基准生成
+## 1. generate_baseline.py - Baseline Generation
 
-**目的**: 为集成方法提供基准对比结果
+**Purpose**: Provide baseline comparison results for ensemble methods
 
-**数据集**: WebQA
+**Dataset**: WebQA
 
-**支持的方法**:
-- `origin`: 仅使用原始问题（基准1）
-- `per_prompt`: 每个释义单独生成（基准2）
+**Supported Methods**:
+- `origin`: Use only original question (Baseline 1)
+- `per_prompt`: Generate each paraphrase separately (Baseline 2)
 
-### 使用方法
+### Usage
 
 ```bash
-# 基准1: 仅原始问题
+# Baseline 1: Original question only
 python src/generate_baseline.py \
     --method origin \
     --dataset webqa \
     --model llama3.2_3b_it
 
-# 基准2: 每个释义单独生成
+# Baseline 2: Each paraphrase separately
 python src/generate_baseline.py \
     --method per_prompt \
     --dataset webqa \
     --model llama3.2_3b_it
 
-# 生成所有基准
+# Generate all baselines
 python src/generate_baseline.py \
     --method all \
     --dataset webqa \
     --model llama3.2_3b_it
 ```
 
+### Features
+- ✅ Simplest generation method
+- ✅ No ensemble techniques used
+- ✅ Suitable as comparison baseline
+
 ---
 
-## 2. generate_original.py
+## 2. generate_original.py - Original Ensemble Methods
 
-**目的**: 自动生成paraphase再集成，使用的是webqa数据集
+**Purpose**: Auto-generate paraphrases and ensemble them using WebQA dataset
 
-**数据集**: WebQA
+**Dataset**: WebQA
 
-**支持的方法**:
-- `max`: 在每一步选择最大logit
-- `avg`: 对所有logits求平均
-- `weighted_avg`: 基于置信度的加权平均
-- `weighted_max`: 基于置信度的加权最大值
+**Supported Methods**:
+- `max`: Select maximum logit at each step
+- `avg`: Average all logits
+- `weighted_avg`: Confidence-weighted average
+- `weighted_max`: Confidence-weighted maximum
 
-### 使用方法
+### Usage
 
 ```bash
-# 最大值集成
+# Maximum ensemble
 python src/generate_original.py \
     --method max \
     --dataset webqa \
     --model llama3.2_3b_it \
     --num_ensemble 6
 
-# 平均值集成
+# Average ensemble
 python src/generate_original.py \
     --method avg \
     --dataset webqa \
     --model llama3.2_3b_it \
     --num_ensemble 6
 
-# 加权平均集成
+# Weighted average ensemble
 python src/generate_original.py \
     --method weighted_avg \
     --dataset webqa \
@@ -84,27 +89,32 @@ python src/generate_original.py \
     --num_ensemble 6
 ```
 
+### Features
+- ✅ Traditional ensemble methods
+- ✅ Logit-level fusion
+- ❌ N forward passes required per step (less efficient)
+- ✅ Supports multiple fusion strategies
 
 ---
 
-## 3. generate_flex_attention.py - FlexAttention集成
+## 3. generate_flex_attention.py - FlexAttention Ensemble
 
-**目的**: 使用FlexAttention实现高效的attention级集成
+**Purpose**: Efficient attention-level ensemble using FlexAttention
 
-**数据集**: myraidlama
+**Dataset**: WebQA
 
-**方法**: FlexAttention - 在单次前向传播中融合多个释义
+**Method**: FlexAttention - Fuses multiple paraphrases in a single forward pass
 
-### 使用方法
+### Usage
 
 ```bash
-# FlexAttention集成（5个释义）
+# FlexAttention ensemble (5 paraphrases)
 python src/generate_flex_attention.py \
-    --dataset myraidlama \
+    --dataset webqa \
     --model llama3.2_3b_it \
     --num_paraphrases 5
 
-# 限制样本数量（快速测试）
+# Limit sample count (quick testing)
 python src/generate_flex_attention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
@@ -112,103 +122,273 @@ python src/generate_flex_attention.py \
     --max_samples 100
 ```
 
-### 工作原理
+### How It Works
 
-1. **拼接**: 一起拼的
+1. **Concatenation**: Concatenate paraphrases together
    ```
    [ins fewshot paraphrase1] [ins fewshot paraphrase2] [ins fewshot paraphrase3] [ins fewshot paraphrase4] [ins fewshot paraphrase5]
    ```
 
-2. **隔离编码**: 每个释义在编码阶段互不干扰
+2. **Isolated Encoding**: Each paraphrase isolated during encoding
    ```
    Para1: ✓✓✓ ✗✗✗ ✗✗✗ ✗✗✗ ✗✗✗
    Para2: ✗✗✗ ✓✓✓ ✗✗✗ ✗✗✗ ✗✗✗
    Para3: ✗✗✗ ✗✗✗ ✓✓✓ ✗✗✗ ✗✗✗
    ```
 
-3. **融合生成**: 生成的token可以关注所有释义
+3. **Fused Generation**: Generated tokens attend to all paraphrases
    ```
    Gen1: ✓✓✓ ✓✓✓ ✓✓✓ ✓✓✓ ✓✓✓
    Gen2: ✓✓✓ ✓✓✓ ✓✓✓ ✓✓✓ ✓✓✓ ✓
    ```
 
+### Features
+- ✅ **Most efficient**: Only 1 forward pass per step (vs N)
+- ✅ Attention-level fusion
+- ✅ Quality comparable to or better than logit-level methods
+- ⚠️ Requires PyTorch 2.5+ or nightly
 
-
-### 环境要求
+### Environment Requirements
 
 ```bash
-# 安装PyTorch nightly（支持FlexAttention）
+# Install PyTorch nightly (supports FlexAttention)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 ```
 
 ---
 
-## 4. generate_myriadlama.py - MyriadLAMA特定生成
+## 4. generate_myriadlama.py - MyriadLAMA-Specific Generation
 
-**目的**: 只使用myraidlama
+**Purpose**: Only use MyriadLAMA dataset for fill-in-the-blank tasks
 
-**数据集**: MyriadLAMA
+**Dataset**: MyriadLAMA
 
-**方法**: FlexAttention
+**Method**: FlexAttention (optimized for fill-in-the-blank tasks)
 
-### 使用方法
+### Usage
 
 ```bash
-# MyriadLAMA FlexAttention生成
+# MyriadLAMA FlexAttention generation
 python src/generate_myriadlama.py \
     --dataset myriadlama \
     --model llama3.2_3b_it \
     --num_paraphrases 5
 ```
----
 
-## 📦 依赖文件说明
+### Differences from generate_flex_attention.py
 
-所有generate脚本依赖以下核心模块：
+| Feature | generate_flex_attention.py | generate_myriadlama.py |
+|---------|---------------------------|------------------------|
+| **Dataset** | WebQA (Q&A) | MyriadLAMA (fill-in-the-blank) |
+| **Task Type** | Long text generation | Word prediction |
+| **Prompt Format** | Standard Q&A format | [MASK] fill-in-the-blank format |
+| **Mask Logic** | Paraphrase isolation | Paraphrase + Few-shot example isolation |
+| **Few-shot** | Standard few-shot | Each example independently isolated |
+| **Output Length** | Variable length | Usually single token |
 
-### 核心模块（src/core/）
-- `constants.py` - 模型路径配置
-- `dataset.py` - 数据集加载器
-- `paraphrase.py` - 释义生成
-- `confidence.py` - 置信度计算
-- `utils.py` - 通用工具函数
-- `interactive.py` - 交互式参数输入
-
-### 根目录模块
-- `mask_visualization.py` - Attention mask可视化（仅flex_attention和myriadlama使用）
-
----
-
+### Features
+- ✅ Optimized for MyriadLAMA
+- ✅ Supports [MASK] fill-in-the-blank tasks
+- ✅ Few-shot examples mutually isolated
+- ✅ Optimized for word prediction
 
 ---
 
-## 🗂️ 文件结构
+## 5. myriadlama_custom_attention_generate.py - MyriadLAMA Custom Attention
+
+**Purpose**: Custom attention-based ensemble generation specifically designed for MyriadLAMA dataset
+
+**Dataset**: MyriadLAMA
+
+**Method**: Uses HuggingFace's native attention mask mechanism with custom structure masks
+
+### Usage
+
+```bash
+# MyriadLAMA custom attention generation
+python myriadlama_custom_attention_generate.py \
+    --dataset myriadlama \
+    --model llama3.2_3b_it
+```
+
+### Key Features
+- Uses HuggingFace's native attention mask mechanism
+- Patches LLaMA's `_update_causal_mask` to inject custom structure masks
+- Implements segment-based masking:
+  * Causal mask is always applied
+  * Shared part (instruction + few-shot) uses normal causal attention
+  * Each para part can attend to itself and the shared part
+  * Para parts are isolated from each other
+
+### Attention Pattern
+
+```
+    shared_part | para_1 | para_2 | para_3 | ...
+    ------------+--------+--------+--------+----
+    normal      | see    | see    | see    | ...   <- shared tokens
+    causal      | shared | shared | shared | ...
+                | only   | only   | only   |
+    ------------+--------+--------+--------+----
+    can see     | normal | X      | X      | ...   <- para_1 tokens
+    shared      | causal |        |        |
+    ------------+--------+--------+--------+----
+    can see     | X      | normal | X      | ...   <- para_2 tokens
+    shared      |        | causal |        |
+    ------------+--------+--------+--------+----
+    ...
+```
+
+### Features
+- ✅ Native HuggingFace integration
+- ✅ Flexible attention masking
+- ✅ Optimized for MyriadLAMA structure
+- ✅ Provides placeholder interface for Qwen model support
+
+---
+
+## 🔄 Method Comparison Summary
+
+### Efficiency Comparison
+
+| Method | Forward Passes per Step | Relative Speed | Fusion Level |
+|--------|------------------------|----------------|--------------|
+| baseline (origin) | 1× | Fastest | No fusion |
+| baseline (per_prompt) | N× | Standard | No fusion |
+| original (max/avg) | N× | Standard | Logit-level |
+| flex_attention | 1× | **Fastest** | **Attention-level** |
+| myriadlama | 1× | **Fastest** | **Attention-level** |
+| myriadlama_custom_attention | 1× | **Fastest** | **Attention-level** |
+
+### Quality Comparison
+
+| Method | Accuracy | Diversity | Use Case |
+|--------|----------|-----------|----------|
+| baseline (origin) | Baseline | Low | Comparison baseline |
+| baseline (per_prompt) | Medium | High | Comparison baseline |
+| original (max/avg) | High | Medium | General Q&A |
+| flex_attention | **High** | High | General Q&A (Recommended) |
+| myriadlama | **High** | High | Fill-in-the-blank |
+| myriadlama_custom_attention | **High** | High | Fill-in-the-blank (custom masks) |
+
+---
+
+## 📦 Dependency Files
+
+All generate scripts depend on the following core modules:
+
+### Core Modules (src/core/)
+- `constants.py` - Model path configuration
+- `dataset.py` - Dataset loaders
+- `paraphrase.py` - Paraphrase generation
+- `confidence.py` - Confidence calculation
+- `utils.py` - General utility functions
+- `interactive.py` - Interactive parameter input
+
+### Root Directory Modules
+- `mask_visualization.py` - Attention mask visualization (used only by flex_attention and myriadlama)
+
+---
+
+## 🚀 Quick Start
+
+### 1. Environment Setup
+
+```bash
+# Create conda environment
+conda env create -f environment.yml
+conda activate flexattention
+
+# Or use Linux-specific environment
+conda env create -f environment_linux.yml
+conda activate self-ensemble-debug
+```
+
+### 2. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+python -m spacy download en_core_web_lg
+```
+
+### 3. Run Generation
+
+```bash
+# Recommended: Use interactive mode
+python src/run_interactive.py
+
+# Or run specific script directly
+python src/generate_flex_attention.py \
+    --dataset webqa \
+    --model llama3.2_3b_it \
+    --num_paraphrases 5
+```
+
+---
+
+## 📊 Choosing the Right Script
+
+### By Task Type
+
+- **WebQA Q&A tasks** → `generate_flex_attention.py` (Recommended)
+- **MyriadLAMA fill-in-the-blank** → `generate_myriadlama.py` or `myriadlama_custom_attention_generate.py`
+- **Need comparison baseline** → `generate_baseline.py`
+- **Research different fusion methods** → `generate_original.py`
+
+### By Efficiency Requirements
+
+- **Fastest speed** → `generate_flex_attention.py`, `generate_myriadlama.py`, or `myriadlama_custom_attention_generate.py`
+- **Standard speed, multiple methods** → `generate_original.py`
+- **Simple baseline** → `generate_baseline.py`
+
+---
+
+## 🗂️ File Structure
 
 ```
 .
 ├── src/
-│   ├── core/                      # 核心模块
-│   │   ├── constants.py           # 配置
-│   │   ├── dataset.py             # 数据集
-│   │   ├── paraphrase.py          # 释义
-│   │   ├── confidence.py          # 置信度
-│   │   ├── utils.py               # 工具
-│   │   └── interactive.py         # 交互
+│   ├── core/                      # Core modules
+│   │   ├── constants.py           # Configuration
+│   │   ├── dataset.py             # Datasets
+│   │   ├── paraphrase.py          # Paraphrases
+│   │   ├── confidence.py          # Confidence
+│   │   ├── utils.py               # Utilities
+│   │   └── interactive.py         # Interactive
 │   │
-│   ├── generate_baseline.py       # 基准生成
-│   ├── generate_original.py       # 原始集成
+│   ├── generate_baseline.py       # Baseline generation
+│   ├── generate_original.py       # Original ensemble
 │   ├── generate_flex_attention.py # FlexAttention
 │   ├── generate_myriadlama.py     # MyriadLAMA
-│   └── run_interactive.py         # 交互式运行
+│   └── run_interactive.py         # Interactive runner
 │
-├── mask_visualization.py          # Mask可视化
-├── requirements.txt               # Python依赖
-├── environment.yml                # Conda环境
-└── archived/                      # 归档文件
-    ├── docs/                      # 详细文档
-    ├── tests/                     # 测试文件
-    ├── tools/                     # 工具脚本
-    └── ...                        # 其他归档文件
+├── myriadlama_custom_attention_generate.py  # MyriadLAMA custom attention
+├── mask_visualization.py          # Mask visualization
+├── requirements.txt               # Python dependencies
+├── environment.yml                # Conda environment
+└── archived/                      # Archived files
+    ├── docs/                      # Detailed documentation
+    ├── tests/                     # Test files
+    ├── tools/                     # Tool scripts
+    └── ...                        # Other archived files
 ```
 
 ---
+
+## 📝 Notes
+
+1. **FlexAttention scripts** (`generate_flex_attention.py` and `generate_myriadlama.py`) require PyTorch 2.5+ or nightly
+2. All scripts support `--max_samples` parameter for quick testing
+3. Use `--help` to view complete parameter list for each script
+4. Archived documentation (`archived/docs/`) contains more detailed technical explanations
+
+---
+
+## 🔗 Related Links
+
+- Main README: [README.md](README.md)
+- Archived Documentation: [archived/docs/](archived/docs/)
+- Interactive Runner: `python src/run_interactive.py`
+
+---
+
+**Last Updated**: 2025-12-17

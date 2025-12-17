@@ -1,98 +1,98 @@
 # Self-Ensemble with FlexAttention
 
-本仓库实现了多种自集成（self-ensemble）文本生成方法，包括基于FlexAttention的高效注意力级融合方法。
+This repository implements multiple self-ensemble text generation methods, including an efficient attention-level fusion approach based on FlexAttention.
 
-## 📖 文档导航
+## 📖 Documentation Navigation
 
-**首次使用请阅读:**
+**First-time users, start here:**
 
-1. **[GENERATE_README.md](GENERATE_README.md)** - 所有生成脚本的详细说明和区别（中文）
-2. **[archived/docs/](archived/docs/)** - 完整的技术文档（已归档）
+1. **[GENERATE_README.md](GENERATE_README.md)** - Detailed explanation and comparison of all generation scripts
+2. **[archived/docs/](archived/docs/)** - Complete technical documentation (archived)
 
-## 🎯 核心特性
+## 🎯 Core Features
 
-本仓库提供**四种生成方法**，适用于不同的使用场景：
+This repository provides **four generation methods** for different use cases:
 
-1. **Baseline生成** - 基准对比方法（origin/per_prompt）
-2. **Original集成** - 传统logit级融合（max/avg/weighted）
-3. **FlexAttention集成** - 高效的attention级融合（WebQA）
-4. **MyriadLAMA集成** - 针对填空任务优化的FlexAttention
+1. **Baseline Generation** - Baseline comparison methods (origin/per_prompt)
+2. **Original Ensemble** - Traditional logit-level fusion (max/avg/weighted)
+3. **FlexAttention Ensemble** - Efficient attention-level fusion (WebQA)
+4. **MyriadLAMA Ensemble** - FlexAttention optimized for fill-in-the-blank tasks
 
-### 方法对比
+### Method Comparison
 
-| 方法 | 融合方式 | 效率 | 适用场景 |
-|------|---------|------|---------|
-| Baseline | 无融合 | 最快 | 对比基准 |
-| Original | Logit级 | 标准 (N×前向) | 研究不同融合策略 |
-| **FlexAttention** | **Attention级** | **最高效 (1×前向)** | **WebQA问答（推荐）** |
-| MyriadLAMA | Attention级 | 最高效 (1×前向) | 填空任务 |
+| Method | Fusion Type | Efficiency | Use Case |
+|--------|------------|------------|----------|
+| Baseline | No fusion | Fastest | Comparison baseline |
+| Original | Logit-level | Standard (N× forward) | Research different fusion strategies |
+| **FlexAttention** | **Attention-level** | **Most efficient (1× forward)** | **WebQA Q&A (Recommended)** |
+| MyriadLAMA | Attention-level | Most efficient (1× forward) | Fill-in-the-blank tasks |
 
-详细对比请参考：[GENERATE_README.md](GENERATE_README.md)
+For detailed comparison, see: [GENERATE_README.md](GENERATE_README.md)
 
-## 🔧 环境配置
+## 🔧 Environment Setup
 
-### 系统要求
+### System Requirements
 
 - Python 3.10+
-- PyTorch 2.5+ 或 nightly（FlexAttention需要）
+- PyTorch 2.5+ or nightly (required for FlexAttention)
 - NVIDIA GPU with CUDA
 - Conda/Miniconda
 
-### 快速安装
+### Quick Installation
 
 ```bash
-# 1. 创建conda环境
+# 1. Create conda environment
 conda env create -f environment.yml
 conda activate flexattention
 
-# 或使用Linux特定环境（Ubuntu 22.04+）
+# Or use Linux-specific environment (Ubuntu 22.04+)
 conda env create -f environment_linux.yml
 conda activate self-ensemble-debug
 
-# 2. 安装依赖
+# 2. Install dependencies
 pip install -r requirements.txt
 python -m spacy download en_core_web_lg
 
-# 3. 安装PyTorch nightly（支持FlexAttention）
+# 3. Install PyTorch nightly (supports FlexAttention)
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 ```
 
-详细配置说明：[archived/docs/QUICKSTART.md](archived/docs/QUICKSTART.md)
+For detailed setup instructions: [archived/docs/QUICKSTART.md](archived/docs/QUICKSTART.md)
 
-## 📖 使用方法
+## 📖 Usage
 
-### 方式一：交互式运行（推荐）
+### Option 1: Interactive Mode (Recommended)
 
 ```bash
 python src/run_interactive.py
 ```
 
-交互式界面会引导您选择：
-- 生成类型（baseline/original/flex_attention/myriadlama）
-- 数据集（webqa/myriadlama）
-- 模型
-- 方法特定参数
+The interactive interface will guide you to select:
+- Generation type (baseline/original/flex_attention/myriadlama)
+- Dataset (webqa/myriadlama)
+- Model
+- Method-specific parameters
 
-### 方式二：直接运行
+### Option 2: Direct Execution
 
 ```bash
-# Baseline基准生成
+# Baseline generation
 python src/generate_baseline.py --method origin --dataset webqa --model llama3.2_3b_it
 
-# Original集成方法
+# Original ensemble methods
 python src/generate_original.py --method max --dataset webqa --model llama3.2_3b_it --num_ensemble 6
 
-# FlexAttention集成（推荐）
+# FlexAttention ensemble (recommended)
 python src/generate_flex_attention.py --dataset webqa --model llama3.2_3b_it --num_paraphrases 5
 
-# MyriadLAMA填空任务
+# MyriadLAMA fill-in-the-blank tasks
 python src/generate_myriadlama.py --dataset myriadlama --model llama3.2_3b_it --num_paraphrases 5
 ```
 
-### 快速测试
+### Quick Testing
 
 ```bash
-# 限制样本数量，快速测试
+# Limit sample count for quick testing
 python src/generate_flex_attention.py \
     --dataset webqa \
     --model llama3.2_3b_it \
@@ -100,89 +100,89 @@ python src/generate_flex_attention.py \
     --max_samples 100
 ```
 
-**完整使用指南**: [GENERATE_README.md](GENERATE_README.md)
+**Complete usage guide**: [GENERATE_README.md](GENERATE_README.md)
 
-## 📁 仓库结构
+## 📁 Repository Structure
 
 ```
 .
-├── src/                           # 核心生成脚本
-│   ├── core/                      # 共享模块
-│   │   ├── constants.py           # 模型配置
-│   │   ├── dataset.py             # 数据集加载
-│   │   ├── paraphrase.py          # 释义生成
-│   │   ├── confidence.py          # 置信度计算
-│   │   ├── utils.py               # 工具函数
-│   │   └── interactive.py         # 交互式输入
+├── src/                           # Core generation scripts
+│   ├── core/                      # Shared modules
+│   │   ├── constants.py           # Model configuration
+│   │   ├── dataset.py             # Dataset loading
+│   │   ├── paraphrase.py          # Paraphrase generation
+│   │   ├── confidence.py          # Confidence calculation
+│   │   ├── utils.py               # Utility functions
+│   │   └── interactive.py         # Interactive input
 │   │
-│   ├── generate_baseline.py      # 基准生成
-│   ├── generate_original.py      # Original集成
-│   ├── generate_flex_attention.py # FlexAttention集成
-│   ├── generate_myriadlama.py    # MyriadLAMA集成
-│   └── run_interactive.py        # 交互式运行器
+│   ├── generate_baseline.py      # Baseline generation
+│   ├── generate_original.py      # Original ensemble
+│   ├── generate_flex_attention.py # FlexAttention ensemble
+│   ├── generate_myriadlama.py    # MyriadLAMA ensemble
+│   └── run_interactive.py        # Interactive runner
 │
-├── mask_visualization.py         # Mask可视化
-├── requirements.txt              # Python依赖
-├── environment.yml               # Conda环境
-├── environment_linux.yml         # Linux环境
+├── mask_visualization.py         # Mask visualization
+├── requirements.txt              # Python dependencies
+├── environment.yml               # Conda environment
+├── environment_linux.yml         # Linux environment
 │
-├── GENERATE_README.md            # 生成脚本详细文档
-├── README.md                     # 本文件
+├── GENERATE_README.md            # Detailed generate scripts documentation
+├── README.md                     # This file
 │
-└── archived/                     # 归档文件
-    ├── docs/                     # 详细文档
-    ├── tests/                    # 测试文件
-    ├── tools/                    # 工具脚本
-    ├── analysis/                 # 分析工具
-    ├── notebooks/                # Jupyter笔记本
-    └── ...                       # 其他归档内容
+└── archived/                     # Archived files
+    ├── docs/                     # Detailed documentation
+    ├── tests/                    # Test files
+    ├── tools/                    # Tool scripts
+    ├── analysis/                 # Analysis tools
+    ├── notebooks/                # Jupyter notebooks
+    └── ...                       # Other archived content
 ```
 
-## 💡 常见问题
+## 💡 Common Issues
 
-### FlexAttention不可用
+### FlexAttention not available
 
 ```bash
 pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 ```
 
-### CUDA内存不足
+### CUDA out of memory
 
 ```bash
 python src/generate_flex_attention.py --device cpu
 ```
 
-### 数据集下载失败
+### Dataset download failed
 
 ```bash
 export HF_ENDPOINT=https://hf-mirror.com
 ```
 
-更多问题解决：[archived/docs/DELEGATE_PROMPT.md](archived/docs/DELEGATE_PROMPT.md)
+For more troubleshooting: [archived/docs/DELEGATE_PROMPT.md](archived/docs/DELEGATE_PROMPT.md)
 
-## 📚 详细文档
+## 📚 Detailed Documentation
 
-- **[GENERATE_README.md](GENERATE_README.md)** - 生成脚本详细说明（必读）
-- **[archived/docs/](archived/docs/)** - 完整技术文档
-  - [QUICKSTART.md](archived/docs/QUICKSTART.md) - 快速开始
-  - [README_FLEXATTENTION.md](archived/docs/README_FLEXATTENTION.md) - FlexAttention概述
-  - [ARCHITECTURE.md](archived/docs/ARCHITECTURE.md) - 架构图表
-  - [实现总结.md](archived/docs/实现总结.md) - 中文实现总结
+- **[GENERATE_README.md](GENERATE_README.md)** - Detailed generate scripts documentation (Must read)
+- **[archived/docs/](archived/docs/)** - Complete technical documentation
+  - [QUICKSTART.md](archived/docs/QUICKSTART.md) - Quick start guide
+  - [README_FLEXATTENTION.md](archived/docs/README_FLEXATTENTION.md) - FlexAttention overview
+  - [ARCHITECTURE.md](archived/docs/ARCHITECTURE.md) - Architecture diagrams
+  - [实现总结.md](archived/docs/实现总结.md) - Implementation summary (Chinese)
 
-## 🔗 相关工具（已归档）
+## 🔗 Related Tools (Archived)
 
-测试、分析和调试工具已移至`archived/`目录：
+Testing, analysis, and debugging tools have been moved to the `archived/` directory:
 
-- **调试工具**: `archived/tools/debug_flexattention.py`
-- **测试脚本**: `archived/tests/`
-- **分析工具**: `archived/analysis/`
-- **可视化**: `archived/plot/`
-- **示例**: `archived/examples/`
+- **Debugging tools**: `archived/tools/debug_flexattention.py`
+- **Test scripts**: `archived/tests/`
+- **Analysis tools**: `archived/analysis/`
+- **Visualization**: `archived/plot/`
+- **Examples**: `archived/examples/`
 
-这些工具仍可使用，但不是运行生成脚本的必需项。
+These tools are still available but not required for running generate scripts.
 
 ---
 
-**最后更新**: 2025-12-17
+**Last Updated**: 2025-12-17
 
-**状态**: ✅ 生产就绪 | 📖 已文档化 | 🧹 已整理
+**Status**: ✅ Production Ready | 📖 Documented | 🧹 Organized
