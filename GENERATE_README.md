@@ -45,16 +45,11 @@ python src/generate_baseline.py \
     --model llama3.2_3b_it
 ```
 
-### 特点
-- ✅ 最简单的生成方法
-- ✅ 不使用任何集成技术
-- ✅ 适合作为对比基准
-
 ---
 
-## 2. generate_original.py - 原始集成方法
+## 2. generate_original.py
 
-**目的**: 实现传统的logit级集成方法
+**目的**: 自动生成paraphase再集成，使用的是webqa数据集
 
 **数据集**: WebQA
 
@@ -89,11 +84,6 @@ python src/generate_original.py \
     --num_ensemble 6
 ```
 
-### 特点
-- ✅ 传统的集成方法
-- ✅ Logit级别的融合
-- ❌ 每一步需要N次前向传播（效率较低）
-- ✅ 支持多种融合策略
 
 ---
 
@@ -101,7 +91,7 @@ python src/generate_original.py \
 
 **目的**: 使用FlexAttention实现高效的attention级集成
 
-**数据集**: WebQA
+**数据集**: myraidlama
 
 **方法**: FlexAttention - 在单次前向传播中融合多个释义
 
@@ -110,7 +100,7 @@ python src/generate_original.py \
 ```bash
 # FlexAttention集成（5个释义）
 python src/generate_flex_attention.py \
-    --dataset webqa \
+    --dataset myraidlama \
     --model llama3.2_3b_it \
     --num_paraphrases 5
 
@@ -124,9 +114,9 @@ python src/generate_flex_attention.py \
 
 ### 工作原理
 
-1. **拼接**: 将5个释义拼接成一个提示
+1. **拼接**: 一起拼的
    ```
-   Para1 [SEP] Para2 [SEP] Para3 [SEP] Para4 [SEP] Para5
+   [ins fewshot paraphrase1] [ins fewshot paraphrase2] [ins fewshot paraphrase3] [ins fewshot paraphrase4] [ins fewshot paraphrase5]
    ```
 
 2. **隔离编码**: 每个释义在编码阶段互不干扰
@@ -142,11 +132,7 @@ python src/generate_flex_attention.py \
    Gen2: ✓✓✓ ✓✓✓ ✓✓✓ ✓✓✓ ✓✓✓ ✓
    ```
 
-### 特点
-- ✅ **最高效**: 每步仅需1次前向传播（vs N次）
-- ✅ Attention级别的融合
-- ✅ 与logit级方法质量相当或更好
-- ⚠️ 需要PyTorch 2.5+或nightly版本
+
 
 ### 环境要求
 
@@ -159,11 +145,11 @@ pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu1
 
 ## 4. generate_myriadlama.py - MyriadLAMA特定生成
 
-**目的**: 为MyriadLAMA数据集的填空任务优化的FlexAttention方法
+**目的**: 只使用myraidlama
 
 **数据集**: MyriadLAMA
 
-**方法**: FlexAttention（针对填空任务优化）
+**方法**: FlexAttention
 
 ### 使用方法
 
@@ -174,48 +160,6 @@ python src/generate_myriadlama.py \
     --model llama3.2_3b_it \
     --num_paraphrases 5
 ```
-
-### 与generate_flex_attention.py的区别
-
-| 特性 | generate_flex_attention.py | generate_myriadlama.py |
-|------|---------------------------|------------------------|
-| **数据集** | WebQA（问答） | MyriadLAMA（填空） |
-| **任务类型** | 长文本生成 | 单词预测 |
-| **提示格式** | 标准问答格式 | [MASK]填空格式 |
-| **Mask逻辑** | 释义隔离 | 释义+Few-shot样例隔离 |
-| **Few-shot** | 标准few-shot | 每个样例独立隔离 |
-| **输出长度** | 可变长度 | 通常单个token |
-
-### 特点
-- ✅ 专为MyriadLAMA优化
-- ✅ 支持[MASK]填空任务
-- ✅ Few-shot样例之间互相隔离
-- ✅ 针对单词预测优化
-
----
-
-## 🔄 方法对比总结
-
-### 效率对比
-
-| 方法 | 每步前向传播次数 | 相对速度 | 融合级别 |
-|------|-----------------|---------|---------|
-| baseline (origin) | 1× | 最快 | 无融合 |
-| baseline (per_prompt) | N× | 标准 | 无融合 |
-| original (max/avg) | N× | 标准 | Logit级 |
-| flex_attention | 1× | **最快** | **Attention级** |
-| myriadlama | 1× | **最快** | **Attention级** |
-
-### 质量对比
-
-| 方法 | 准确性 | 多样性 | 适用场景 |
-|------|--------|--------|---------|
-| baseline (origin) | 基准 | 低 | 对比基准 |
-| baseline (per_prompt) | 中等 | 高 | 对比基准 |
-| original (max/avg) | 高 | 中等 | 通用问答 |
-| flex_attention | **高** | 高 | 通用问答（推荐） |
-| myriadlama | **高** | 高 | 填空任务 |
-
 ---
 
 ## 📦 依赖文件说明
@@ -235,56 +179,6 @@ python src/generate_myriadlama.py \
 
 ---
 
-## 🚀 快速开始
-
-### 1. 环境配置
-
-```bash
-# 创建conda环境
-conda env create -f environment.yml
-conda activate flexattention
-
-# 或使用Linux特定环境
-conda env create -f environment_linux.yml
-conda activate self-ensemble-debug
-```
-
-### 2. 安装依赖
-
-```bash
-pip install -r requirements.txt
-python -m spacy download en_core_web_lg
-```
-
-### 3. 运行生成
-
-```bash
-# 推荐：使用交互式模式
-python src/run_interactive.py
-
-# 或直接运行特定脚本
-python src/generate_flex_attention.py \
-    --dataset webqa \
-    --model llama3.2_3b_it \
-    --num_paraphrases 5
-```
-
----
-
-## 📊 选择合适的脚本
-
-### 根据任务类型选择
-
-- **WebQA问答任务** → `generate_flex_attention.py` （推荐）
-- **MyriadLAMA填空任务** → `generate_myriadlama.py`
-- **需要对比基准** → `generate_baseline.py`
-- **研究不同融合方法** → `generate_original.py`
-
-### 根据效率要求选择
-
-- **最快速度** → `generate_flex_attention.py` 或 `generate_myriadlama.py`
-- **标准速度，多种方法** → `generate_original.py`
-- **简单基准** → `generate_baseline.py`
 
 ---
 
@@ -318,22 +212,3 @@ python src/generate_flex_attention.py \
 ```
 
 ---
-
-## 📝 注意事项
-
-1. **FlexAttention脚本**（`generate_flex_attention.py`和`generate_myriadlama.py`）需要PyTorch 2.5+或nightly版本
-2. 所有脚本都支持`--max_samples`参数用于快速测试
-3. 使用`--help`查看每个脚本的完整参数列表
-4. 归档的文档（`archived/docs/`）包含更详细的技术说明
-
----
-
-## 🔗 相关链接
-
-- 主README: [README.md](README.md)
-- 归档文档: [archived/docs/](archived/docs/)
-- 交互式运行: `python src/run_interactive.py`
-
----
-
-**最后更新**: 2025-12-17
