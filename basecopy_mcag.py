@@ -42,7 +42,6 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.models.llama.modeling_llama import LlamaModel
 
 from constants import MODEL_PATHs
-from mask_visualization import visualize_mask_heatmap
 
 warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
 
@@ -186,17 +185,12 @@ def construct_prompt_new_format(instruction, few_shot_examples, question_paraphr
     shared_part = "\n".join(shared_parts)
     
     # Build individual paraphrase parts
-    # SWAP: Put para2 first (will be group 1), para1 second (will be group 2)
     para_parts = []
     for para in question_paraphrases:
         para_part = f"Q: {para} A:"
         para_parts.append(para_part)
     
-    # Swap positions if we have at least 2 paraphrases
-    if len(para_parts) >= 2:
-        para_parts[0], para_parts[1] = para_parts[1], para_parts[0]
-    
-    # Return list: [shared_part, para_2 (swapped to position 1), para_1 (swapped to position 2), ...]
+    # Return list: [shared_part, para_part_1, para_part_2, ...]
     return [shared_part] + para_parts
 
 
@@ -274,75 +268,6 @@ def build_question_struct_mask(question_group_ids, Q, K, dtype, device):
     """
     Build the per-query structure mask [1, 1, Q, K].
     
-    NEW STRATEGY: para2 (group 1) is completely isolated to eliminate its influence.
-    
-    Rule (token-level):
-    - Let g_q = question_group_ids[q], g_k = question_group_ids[k].
-    - If g_q == 0 (shared part): can see all EXCEPT group 1 (para2)
-    - If g_q == 1 (para2): COMPLETELY ISOLATED - sees nothing, no one can see it
-    - If g_q >= 2 (para1 and others): can see shared (group 0) + themselves only
-    
-    Args:
-        question_group_ids: [S] tensor with values in {0, 1, 2, ...}
-                           0 = shared part, 1 = para2 (isolated), 2+ = para1 and others
-        Q: Query sequence length
-        K: Key sequence length
-        dtype: Data type for mask
-        device: Device for mask
-        
-    Returns:
-        [1, 1, Q, K] additive mask (0 or -inf)
-    """
-
-    neg_inf = torch.finfo(dtype).min
-    
-    # Ensure question_group_ids is on the correct device
-    q_group_ids = question_group_ids[:Q].to(device)
-    k_group_ids = question_group_ids[:K].to(device)
-    
-    # [Q, 1] and [1, K]
-    g_q = q_group_ids.view(Q, 1)  # [Q, 1]
-    g_k = k_group_ids.view(1, K)  # [1, K]
-    
-    # NEW MASK STRATEGY:
-    # - Group 0 (shared): normal, can see all EXCEPT para2 (group 1)
-    # - Group 1 (para2, now in first position): COMPLETELY ISOLATED
-    #   * Cannot be attended to by anyone (including itself)
-    #   * Cannot attend to anything (including itself)
-    # - Group 2+ (para1 and others): can see shared + themselves only (NOT para2)
-    
-    is_shared = (g_q == 0)  # Query is in shared part
-    is_para2 = (g_q == 1)   # Query is in para2 (the isolated one)
-    is_other_para = (g_q >= 2)  # Query is in para1 or other paras
-    
-    # For shared part queries: allow all keys EXCEPT para2 (group 1)
-    allowed_shared = is_shared & (g_k != 1)  # Shared cannot see para2
-    
-    # For para2 queries: block everything (completely isolated)
-    allowed_para2 = torch.zeros_like(allowed_shared, dtype=torch.bool)  # Para2 sees nothing
-    
-    # For other para queries (para1, etc.): allow shared (except para2) OR same group
-    is_k_shared = (g_k == 0)  # [1, K]
-    same_group = (g_q == g_k)  # [Q, K]
-    allowed_other_para = is_other_para & ((is_k_shared) | same_group)
-    
-    # Combine: allow if any condition is true
-    allowed = allowed_shared | allowed_para2 | allowed_other_para  # [Q, K]
-    
-    # Additionally, NO ONE can attend to para2 (group 1)
-    allowed = allowed & (g_k != 1)  # Block all attention to para2
-    
-    # Create mask: 0 for allowed, -inf for blocked
-    mask = torch.zeros((1, 1, Q, K), device=device, dtype=dtype)
-    mask = mask.masked_fill(~allowed, neg_inf)
-
-    fig = visualize_mask_heatmap(mask[0, 0], title="Question Struct Mask", show=False, save=False)
-    return mask
-
-def build_test_mask(question_group_ids, Q, K, dtype, device):
-    """
-    Build the per-query structure mask [1, 1, Q, K].
-    
     Rule (token-level):
     - Let g_q = question_group_ids[q], g_k = question_group_ids[k].
     - If g_q == 0 (shared part): allow everything (structure doesn't constrain it)
@@ -390,6 +315,8 @@ def build_test_mask(question_group_ids, Q, K, dtype, device):
     mask = mask.masked_fill(~allowed, neg_inf)
     print()
     return mask
+
+
 
 # ==============================================================================
 # LLaMA model patching (for transformers >= 4.55)
@@ -458,9 +385,7 @@ def install_llama_struct_mask(model):
                             if H1 > 1:
                                 struct_mask = struct_mask.expand(B, H1, Q, K)
                             attention_mask = attention_mask + struct_mask
-                            fig = visualize_mask_heatmap(
-                                 attention_mask[0, 0], title="Question Struct Mask", show=False, save=False
-                             )
+                
                 return old_fwd(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -754,11 +679,11 @@ if __name__ == "__main__":
         help="Normalize predictions and answers to lemmas"
     )
     parser.add_argument(
-        "--num_paraphrases", type=int, default=2,
+        "--num_paraphrases", type=int, default=1,
         help="Number of paraphrases to use (default: 2)"
     )
     parser.add_argument(
-        "--max_samples", type=int, default=2,
+        "--max_samples", type=int, default=200,
         help="Maximum number of samples to generate (default: None, process all)"
     )
     parser.add_argument(
@@ -807,7 +732,7 @@ if __name__ == "__main__":
     os.makedirs(local_output_dir, exist_ok=True)
     
     # Determine file name
-    dump_file = f"{local_output_dir}/myriadlama_custom_{args.num_paraphrases}paras.feather"
+    dump_file = f"{local_output_dir}/p1.feather"
     
     print(f"Output file: {dump_file}")
     

@@ -33,6 +33,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from core.constants import MODEL_PATHs
+from mask_visualization import visualize_mask_heatmap
 
 # Try to import FlexAttention
 try:

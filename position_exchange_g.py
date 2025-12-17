@@ -214,6 +214,8 @@ def tokenize_prompt_parts(prompt_parts, tokenizer, add_special_tokens=True):
         segment_positions: List of (start, end) tuples for each segment (after special tokens)
         question_group_ids: Tensor of group IDs for each token position
         total_length: Total number of tokens (including special tokens)
+        para_lengths: List of original paraphrase lengths (before padding)
+        max_para_length: Maximum paraphrase length
     """
     # Tokenize each part individually
     tokenized_parts = []
@@ -223,6 +225,25 @@ def tokenize_prompt_parts(prompt_parts, tokenizer, add_special_tokens=True):
     for part in prompt_parts:
         tokens = tokenizer.encode(part, add_special_tokens=False)
         tokenized_parts.append(tokens)
+    
+    # Find the longest paraphrase (skip shared part at index 0)
+    if len(tokenized_parts) > 1:
+        para_lengths = [len(tokens) for tokens in tokenized_parts[1:]]  # Exclude shared part
+        max_para_length = max(para_lengths)
+        
+        # Add padding tokens to align paraphrases
+        # Use a special padding token (we'll use tokenizer.pad_token_id or unk_token_id)
+        pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.unk_token_id
+        
+        for i in range(1, len(tokenized_parts)):
+            current_length = len(tokenized_parts[i])
+            padding_length = max_para_length - current_length
+            if padding_length > 0:
+                # Add padding tokens at the BEGINNING of the paraphrase
+                tokenized_parts[i] = [pad_token_id] * padding_length + tokenized_parts[i]
+    else:
+        para_lengths = []
+        max_para_length = 0
     
     # Build full token sequence and track positions
     full_tokens = []
@@ -262,7 +283,7 @@ def tokenize_prompt_parts(prompt_parts, tokenizer, add_special_tokens=True):
     # Convert to tensor
     input_ids = torch.tensor([full_tokens], dtype=torch.long)
     
-    return input_ids, segment_positions, question_group_ids, total_length
+    return input_ids, segment_positions, question_group_ids, total_length, para_lengths, max_para_length
 
 
 # ==============================================================================
@@ -582,11 +603,26 @@ def myriadlama_custom_attention_generation(
     model.generation_config.pad_token_id = tokenizer.eos_token_id
     
     # Tokenize and get positions (now returns input_ids directly)
-    input_ids, segment_positions, question_group_ids, total_length = \
+    input_ids, segment_positions, question_group_ids, total_length, para_lengths, max_para_length = \
         tokenize_prompt_parts(prompt_parts, tokenizer, add_special_tokens=True)
     
     # Move to device
     input_ids = input_ids.to(model.device)
+    
+    # Create unified position_ids for paraphrases
+    # All paraphrases use the same position embedding sequence starting from para1's beginning
+    position_ids = torch.arange(total_length, dtype=torch.long, device=model.device).unsqueeze(0)
+    
+    if len(segment_positions) > 1 and max_para_length > 0:
+        # Get the start position of the first paraphrase (para1, which is at index 1 after swap)
+        para1_start = segment_positions[1][0]
+        
+        # For each paraphrase segment, override position_ids to use unified sequence
+        for para_idx in range(1, len(segment_positions)):
+            start, end = segment_positions[para_idx]
+            # Map this paraphrase's positions to the unified sequence
+            # Unified sequence: starts at para1_start, continues for max_para_length
+            position_ids[0, start:end] = torch.arange(para1_start, para1_start + (end - start), dtype=torch.long, device=model.device)
     
     # Store debug info if requested
     if debug_info is not None:
@@ -594,8 +630,11 @@ def myriadlama_custom_attention_generation(
         debug_info['segment_positions'] = segment_positions
         debug_info['question_group_ids'] = question_group_ids.tolist()
         debug_info['total_length'] = total_length
+        debug_info['para_lengths'] = para_lengths
+        debug_info['max_para_length'] = max_para_length
+        debug_info['position_ids'] = position_ids.tolist()
     
-    inputs = {"input_ids": input_ids}
+    inputs = {"input_ids": input_ids, "position_ids": position_ids}
     
     # Set question_group_ids on model for mask generation
     # Extend to cover potential generated tokens (set as group 0 to allow full attention)
@@ -612,12 +651,15 @@ def myriadlama_custom_attention_generation(
     # Generation loop
     for step in range(max_new_tokens):
         # Forward pass
-        
-        logits = model(inputs["input_ids"]).logits[:, -1, :]
+        logits = model(**inputs).logits[:, -1, :]
         
         # Token selection (greedy)
         next_token = torch.argmax(logits, dim=-1).unsqueeze(1)
         inputs["input_ids"] = torch.cat([inputs["input_ids"], next_token], dim=1)
+        
+        # Update position_ids for the new token
+        next_position = inputs["position_ids"][:, -1:] + 1
+        inputs["position_ids"] = torch.cat([inputs["position_ids"], next_position], dim=1)
         
         if generated is None:
             generated = next_token
@@ -648,7 +690,7 @@ def myriadlama_custom_attention_generation(
 # Debug visualization
 # ==============================================================================
 
-def visualize_custom_attention_mask(segment_positions, question_group_ids, tokenizer, input_ids=None):
+def visualize_custom_attention_mask(segment_positions, question_group_ids, tokenizer, input_ids=None, position_ids=None, para_lengths=None, max_para_length=None):
     """
     Visualize the custom attention mask structure for debugging.
     
@@ -657,6 +699,9 @@ def visualize_custom_attention_mask(segment_positions, question_group_ids, token
         question_group_ids: Tensor of group IDs
         tokenizer: Tokenizer for decoding
         input_ids: Token IDs (list or tensor)
+        position_ids: Position IDs (list or tensor), optional
+        para_lengths: List of original paraphrase lengths, optional
+        max_para_length: Maximum paraphrase length, optional
         
     Returns:
         String representation of the mask structure
@@ -676,11 +721,41 @@ def visualize_custom_attention_mask(segment_positions, question_group_ids, token
     lines.append(f"{'='*80}")
     lines.append(f"Total tokens: {seq_len}")
     
+    # Show paraphrase alignment info
+    if para_lengths is not None and max_para_length is not None:
+        lines.append(f"\nParaphrase Alignment Info:")
+        lines.append(f"  Max paraphrase length: {max_para_length}")
+        for i, orig_len in enumerate(para_lengths):
+            padding = max_para_length - orig_len
+            lines.append(f"  Para {i+1}: original={orig_len}, padding={padding}, aligned={max_para_length}")
+    
     # Show segment structure
     lines.append(f"\nSegment Structure:")
     for i, (start, end) in enumerate(segment_positions):
         group_name = "shared_part" if i == 0 else f"para_{i}"
-        lines.append(f"  {group_name}: tokens {start}-{end} (group {i})")
+        lines.append(f"  {group_name}: tokens {start}-{end} (group {i}, length {end-start})")
+    
+    # Show position_ids info if available
+    if position_ids is not None:
+        lines.append(f"\nPosition IDs Info:")
+        if isinstance(position_ids, list) and len(position_ids) > 0 and isinstance(position_ids[0], list):
+            pos_ids = position_ids[0]  # Extract from batch
+        elif hasattr(position_ids, 'tolist'):
+            pos_ids = position_ids.tolist()
+            if isinstance(pos_ids, list) and len(pos_ids) > 0 and isinstance(pos_ids[0], list):
+                pos_ids = pos_ids[0]
+        else:
+            pos_ids = position_ids
+        
+        for i, (start, end) in enumerate(segment_positions):
+            if i == 0:
+                group_name = "shared_part"
+            else:
+                group_name = f"para_{i}"
+            if start < len(pos_ids) and end <= len(pos_ids):
+                seg_pos_ids = pos_ids[start:end]
+                if len(seg_pos_ids) > 0:
+                    lines.append(f"  {group_name}: pos_ids range [{seg_pos_ids[0]}..{seg_pos_ids[-1]}]")
     
     # Show question_group_ids distribution
     lines.append(f"\nQuestion Group IDs Distribution:")
@@ -754,7 +829,7 @@ if __name__ == "__main__":
         help="Normalize predictions and answers to lemmas"
     )
     parser.add_argument(
-        "--num_paraphrases", type=int, default=2,
+        "--num_paraphrases", type=int, default=1,
         help="Number of paraphrases to use (default: 2)"
     )
     parser.add_argument(
@@ -770,7 +845,7 @@ if __name__ == "__main__":
         help="Disable GPU peer-to-peer (P2P) access"
     )
     parser.add_argument(
-        "-n", "--normal_attention", action="store_true",
+        "-n", "--normal_attention", action="store_true", default=True,
         help="Use normal causal attention instead of custom structured attention"
     )
     args = parser.parse_args()
@@ -971,7 +1046,10 @@ if __name__ == "__main__":
                     debug_info['segment_positions'],
                     torch.tensor(debug_info['question_group_ids']),
                     tokenizer,
-                    input_ids=debug_info['input_ids'][0] if debug_info['input_ids'] else None
+                    input_ids=debug_info['input_ids'][0] if debug_info['input_ids'] else None,
+                    position_ids=debug_info.get('position_ids'),
+                    para_lengths=debug_info.get('para_lengths'),
+                    max_para_length=debug_info.get('max_para_length')
                 )
                 batch_debug_mask.append(mask_viz)
                 
