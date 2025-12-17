@@ -11,6 +11,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from constants import MODEL_PATHs
+from mask_visualization import visualize_mask_heatmap
 warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
 
 nlp = None

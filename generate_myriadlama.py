@@ -32,7 +32,7 @@ import warnings
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from core.constants import MODEL_PATHs
+from constants import MODEL_PATHs
 from mask_visualization import visualize_mask_heatmap
 
 # Try to import FlexAttention
@@ -894,7 +894,7 @@ if __name__ == "__main__":
         exit(1)
     
     # Load MyriadLAMA dataset
-    from core.dataset import MyriadLamaDataset
+    from dataset import MyriadLamaDataset
     dataset = MyriadLamaDataset(model_name=args.model)
     
     # Use batch_size=1 for sequential processing

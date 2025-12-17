@@ -24,7 +24,7 @@ import warnings
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from core.constants import MODEL_PATHs
+from constants import MODEL_PATHs
 from mask_visualization import visualize_mask_heatmap
 
 # Try to import FlexAttention
@@ -519,7 +519,7 @@ if __name__ == "__main__":
     
     # Reused pattern: Dataset loading (from generate.py)
     if args.dataset == "webqa":
-        from core.dataset import WebQADataset
+        from dataset import WebQADataset
         dataset = WebQADataset(model_name=args.model)
     elif args.dataset == "myriadlama":
         from core.dataset import MyriadLamaDataset
