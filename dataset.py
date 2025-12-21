@@ -255,7 +255,7 @@ class MyriadLamaDataset(ParaPharaseDataset):
     
     @property
     def instruction(self):
-        return "Based on the context, predict the [MASK] in the sentence in one word. Do NOT use [MASK] in your answer."
+        return "Based on the context, predict the [MASK] in the sentence in one word."
     
     def load_dataset(self):
         if os.path.exists(self.dataset_path):
@@ -299,14 +299,13 @@ class MyriadLamaDataset(ParaPharaseDataset):
         for item in batch:
             uuid = item["uuid"]
             random.seed(uuid)
-            auto_paras = random.sample(item["auto_paraphrases"], 5)
+            auto_paras = random.sample(item["auto_paraphrases"], 15)
             paraphrases.append(item["manual_paraphrases"] + auto_paras)
         return uuids, answers, list(zip(*paraphrases))
 
     def get_few_shot_examples(self, k=5, seed=42):
         if not os.path.exists(self.dataset_path):
             raise FileNotFoundError(f"Dataset not found at {self.dataset_path}. Please run the dataset preparation first.")
-        
         train_ds = load_from_disk(self.dataset_path)['train']
         random.seed(seed)
         indices = random.sample(range(len(train_ds)), k)

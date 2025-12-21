@@ -43,7 +43,7 @@ def append_lemmas(df, results):
     df["answer_lemmas"] = pd.Series(all_answer_lemmas, dtype=object)
     return df
 
-def single_generation(prompts, max_new_tokens=20):
+def single_generation(prompts, max_new_tokens=10):
     tokenizer.pad_token_id = tokenizer.eos_token_id
     model.generation_config.temperature = None
     model.generation_config.top_p = None
@@ -81,7 +81,7 @@ def ensemble_generation(prompt_sets, integration_method="max", weights=None):
     model.generation_config.pad_token_id = tokenizer.eos_token_id
 
     generated = None
-    max_new_tokens = 20
+    max_new_tokens = 10
 
     all_inputs = []
     for prompts in prompt_sets:
@@ -141,6 +141,54 @@ def ensemble_generation(prompt_sets, integration_method="max", weights=None):
     return new_generated_texts
 
 
+def sample_paraphrases_per_item(all_paraphrases, num_manual, num_auto, num_samples):
+    """
+    Two-stage sampling of paraphrases for each item in the batch:
+    1. Randomly sample exactly num_manual from manual paraphrases (indices 0-4) 
+       and num_auto from auto paraphrases (indices 5-19)
+    2. Randomly sample num_samples from the combined pool of num_manual + num_auto
+    
+    Each UUID (item) in the batch gets different random sampling for maximum diversity.
+    
+    Args:
+        all_paraphrases: List of paraphrase lists, where all_paraphrases[i][j] is the i-th paraphrase version for the j-th item
+        num_manual: Exactly how many manual paraphrases to sample (from indices 0-4)
+        num_auto: Exactly how many automatic paraphrases to sample (from indices 5-19)
+        num_samples: Number of paraphrases to sample from the pool
+    
+    Returns:
+        List of lists: sampled_paraphrases[i][j] is the i-th sampled paraphrase for the j-th item in batch
+    """
+    batch_size = len(all_paraphrases[0])
+    num_paraphrase_versions = len(all_paraphrases)
+    
+    manual_indices = list(range(5))  # Indices 0-4 are manual
+    auto_indices = list(range(5, num_paraphrase_versions))  # Indices 5+ are automatic
+    
+    # Result structure: [num_samples][batch_size]
+    sampled_paraphrases = []
+    
+    # Process each item in the batch separately for different sampling
+    for item_idx in range(batch_size):
+        # Stage 1: Randomly sample X manual and Y auto paraphrases
+        selected_manual = np.random.choice(manual_indices, size=min(num_manual, len(manual_indices)), replace=False)
+        selected_auto = np.random.choice(auto_indices, size=min(num_auto, len(auto_indices)), replace=False)
+        
+        # Combine into candidate pool
+        candidate_pool = list(selected_manual) + list(selected_auto)
+        
+        # Stage 2: Randomly sample Z from the candidate pool
+        final_indices = np.random.choice(candidate_pool, size=min(num_samples, len(candidate_pool)), replace=False)
+        
+        # Extract the selected paraphrases for this item
+        for sample_idx, paraphrase_idx in enumerate(final_indices):
+            if sample_idx >= len(sampled_paraphrases):
+                sampled_paraphrases.append([])
+            sampled_paraphrases[sample_idx].append(all_paraphrases[paraphrase_idx][item_idx])
+    
+    return sampled_paraphrases
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Ensemble generation")
@@ -152,26 +200,28 @@ if __name__ == "__main__":
     parser.add_argument("--lemmaize", action="store_true", help="normalize predictions and answers to lemmas.")
     parser.add_argument("--indexs", type=str, default=None, help="Indexs of the dataset to use for generation. If None, use all.")
     parser.add_argument("--num_ensemble", type=int, default=6, help="Number of models to ensemble. Only used for 'max' and 'avg' methods.")
+    parser.add_argument("--num_manual", type=int, default=5, help="Number of manual paraphrases to sample (from indices 0-4). Default: 5")
+    parser.add_argument("--num_auto", type=int, default=5, help="Number of automatic paraphrases to sample (from indices 5-19). Default: 5")
+    parser.add_argument("--num_samples", type=int, default=5, help="Number of paraphrases to sample from the pool of manual+auto paraphrases. Default: 5")
+    parser.add_argument("--max_samples", type=int, default=250, help="Maximum number of samples to process (default: 250, process all)")
     args = parser.parse_args()    
 
     if args.dataset == "webqa":
         from dataset import WebQADataset
         dataset = WebQADataset(model_name=args.model)
     elif args.dataset == "myriadlama":
-        from core.dataset import MyriadLamaDataset
+        from dataset import MyriadLamaDataset
         dataset = MyriadLamaDataset(model_name=args.model)
     else:
         raise ValueError("Unsupported dataset. Please use 'webqa' or 'myriadlama'.")
-
-        
-    dataloader = dataset.get_dataloader(batch_size=8, shuffle=False)
     if args.model not in MODEL_PATHs:
         raise ValueError(f"Model {args.model} is not supported. Please choose from {list(MODEL_PATHs.keys())}.")
     
     model_path = MODEL_PATHs.get(args.model, args.model)
     
     if args.method == "origin":
-        dump_file = f"{dataset.dataset_root}/origin.feather"
+        dump_file = f"./results/{args.model}/origin.feather"
+        os.makedirs(os.path.dirname(dump_file), exist_ok=True)
         if os.path.exists(dump_file):
             print(f"File {dump_file} already exists, skipping generation.")
             exit(0)
@@ -179,7 +229,8 @@ if __name__ == "__main__":
         tokenizer = AutoTokenizer.from_pretrained(model_path)
         model = AutoModelForCausalLM.from_pretrained(model_path, device_map=args.device, torch_dtype="auto")
         tokenizer.pad_token = tokenizer.eos_token
-
+    
+        dataloader = dataset.get_dataloader(batch_size=8, shuffle=False)
         df = pd.DataFrame(columns=["uuid", "answers", "question", "prompt", "prediction", "generation"])
         few_shot_context = dataset.get_few_shot_examples()
         
@@ -207,11 +258,15 @@ if __name__ == "__main__":
         df = append_lemmas(df, results)
         
         df.to_feather(dump_file)
+        csv_file = dump_file.replace('.feather', '.csv')
+        df.to_csv(csv_file, index=False)
         print(f"Baseline results saved to {dump_file}")
+        print(f"CSV file saved to {csv_file}")
         exit(0)
     
     if args.method == "per_prompt":
-        dump_file = f"{dataset.dataset_root}/per_prompt.feather"
+        dump_file = f"./results/{args.model}/per_prompt.feather"
+        os.makedirs(os.path.dirname(dump_file), exist_ok=True)
         if os.path.exists(dump_file):
             print(f"File {dump_file} already exists, skipping generation.")
             exit(0)
@@ -248,14 +303,29 @@ if __name__ == "__main__":
             }
             df = pd.concat([df, pd.DataFrame(items)], ignore_index=True)
         df.to_feather(dump_file)
+        csv_file = dump_file.replace('.feather', '.csv')
+        df.to_csv(csv_file, index=False)
+        print(f"Results saved to {dump_file}")
+        print(f"CSV file saved to {csv_file}")
         exit(0)
     else:
-        if args.indexs is not None:
-            _root = os.path.join(dataset.dataset_root, "diversity")
-            os.makedirs(_root, exist_ok=True)
-            dump_file = f"{_root}/ensemble_{args.method}-{args.indexs}.feather"
-        else:
-            dump_file = f"{dataset.dataset_root}/ensemble_{args.method}-{args.num_ensemble}.feather"
+        # Validate parameter constraints
+        if args.num_manual < 0 or args.num_auto < 0 or args.num_samples < 0:
+            print("ERROR: num_manual, num_auto, and num_samples must be non-negative.")
+            exit(1)
+        
+        if args.num_samples > args.num_manual + args.num_auto:
+            print(f"ERROR: num_samples ({args.num_samples}) cannot exceed num_manual + num_auto ({args.num_manual + args.num_auto}).")
+            exit(1)
+        
+        if args.num_manual > 5:
+            print("WARNING: num_manual is greater than 5, but only indices 0-4 are manual. Capping at 5.")
+            args.num_manual = 5
+        
+        # Generate output filename based on sampling parameters
+        filename = f"ensemble_{args.method}-m{args.num_manual}a{args.num_auto}s{args.num_samples}.feather"
+        dump_file = f"./results/{args.model}/{filename}"
+        os.makedirs(os.path.dirname(dump_file), exist_ok=True)
         
         print(f"Dump file: {dump_file}")
 
@@ -272,6 +342,10 @@ if __name__ == "__main__":
 
             df = append_lemmas(df, results)
             df.to_feather(dump_file)
+            csv_file = dump_file.replace('.feather', '.csv')
+            df.to_csv(csv_file, index=False)
+            print(f"Lemmatized results saved to {dump_file}")
+            print(f"CSV file saved to {csv_file}")
             exit(0)
 
         if os.path.exists(dump_file):
@@ -282,20 +356,26 @@ if __name__ == "__main__":
         model = AutoModelForCausalLM.from_pretrained(model_path, device_map=args.device, torch_dtype="auto")
         tokenizer.pad_token = tokenizer.eos_token
 
+        dataloader = dataset.get_dataloader(batch_size=8, shuffle=False)
         if args.method.startswith("weighted_"):
             conf_df = pd.read_feather(os.path.join(dataset.dataset_root, "confidence.feather"))
 
-        df = pd.DataFrame(columns=["uuid", "answers", "prediction", "generation"])
+        df = pd.DataFrame(columns=["uuid", "answers", "prediction", "generation","correctness"])
         print(f"Ensemble generation with method: {args.method}")
+        if args.max_samples:
+            print(f"Processing maximum {args.max_samples} samples")
         few_shot_context = dataset.get_few_shot_examples()
+        sample_count = 0
         for uuids, answers, all_paraphrases in tqdm(dataloader):
-            if args.indexs is not None:
-                all_paraphrases = [all_paraphrases[int(idx)] for idx in args.indexs.split(",")]
-            else:
-                assert len(all_paraphrases) >= args.num_ensemble, f"Expected at least {args.num_ensemble} paraphrases, found {len(all_paraphrases)}"
-                all_paraphrases = all_paraphrases[:args.num_ensemble]
-                assert len(all_paraphrases) == args.num_ensemble, f"Expected {args.num_ensemble} paraphrases, found {len(all_paraphrases)}"
-            all_paraphrases = [list(paras) for paras in all_paraphrases]
+            # Use sampling function to select paraphrases
+            # Each UUID gets different random sampling of X manual + Y auto, then Z from pool
+            sampled_paraphrases = sample_paraphrases_per_item(
+                all_paraphrases, 
+                args.num_manual, 
+                args.num_auto, 
+                args.num_samples
+            )
+            all_paraphrases = sampled_paraphrases
             all_prompts = []
             confidences = [] if args.method.startswith("weighted_") else None
             for paraphrases in all_paraphrases:
@@ -309,6 +389,7 @@ if __name__ == "__main__":
                 all_prompts.append(prompts)
             generations = ensemble_generation(all_prompts, integration_method=args.method, weights=confidences)
             predictions = [gen.strip().split('\n')[0] for gen in generations]
+            
             items = {
                 "uuid": uuids,
                 "paraphrases": list(zip(*all_paraphrases)),
@@ -318,6 +399,11 @@ if __name__ == "__main__":
                 "generation": generations,
             }
             df = pd.concat([df, pd.DataFrame(items)], ignore_index=True)
+            
+            sample_count += 1
+            if args.max_samples and sample_count >= args.max_samples:
+                print(f"Reached maximum sample limit: {args.max_samples}")
+                break
         
         # Split the DataFrame into chunks for multiprocessing
         chunks = np.array_split(df, num_parts)
@@ -327,3 +413,7 @@ if __name__ == "__main__":
         
         # Save the DataFrame to a Feather file
         df.to_feather(dump_file)
+        csv_file = dump_file.replace('.feather', '.csv')
+        df.to_csv(csv_file, index=False)
+        print(f"Results saved to {dump_file}")
+        print(f"CSV file saved to {csv_file}")
