@@ -62,7 +62,7 @@ def append_lemmas(df, results):
     df["answer_lemmas"] = pd.Series(all_answer_lemmas, dtype=object)
     return df
 
-def single_generation(prompts, max_new_tokens=20):
+def single_generation(prompts, max_new_tokens=10):
     """Generate responses using greedy decoding."""
     tokenizer.pad_token_id = tokenizer.eos_token_id
     model.generation_config.temperature = None
@@ -75,6 +75,9 @@ def single_generation(prompts, max_new_tokens=20):
         padding_side='left', return_attention_mask=True).to(model.device)
 
     generated = None
+    
+    # Get newline token id
+    newline_token_id = tokenizer.encode('\n', add_special_tokens=False)[0]
 
     for _ in range(max_new_tokens):
         with torch.no_grad():
@@ -88,9 +91,14 @@ def single_generation(prompts, max_new_tokens=20):
             generated = next_token
         else:
             generated = torch.cat([generated, next_token], dim=1)
+        
+        # Stop if newline token is generated in any sequence
+        if (next_token == newline_token_id).any():
+            break
 
     generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
-    new_generated_texts = [gen.strip() for gen in generated_texts]
+    # Stop at newline to get only the first line
+    new_generated_texts = [gen.split('\n')[0].strip() for gen in generated_texts]
     return new_generated_texts
 
 

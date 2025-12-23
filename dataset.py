@@ -14,7 +14,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils import set_seed
 
-DATATASET_ROOT = "/net/tokyo100-10g/data/str01_01/y-guo/datasets"
+DATATASET_ROOT = "/home/xzhao/workspace/GYB_self-ensemble/datasets"
 
 
 def string_to_id(s):

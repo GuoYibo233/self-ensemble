@@ -50,6 +50,13 @@ def multinormal_generation(model, tokenizer, prompts, num_samples):
         prompts, return_tensors="pt", padding=True, padding_side='left',
         truncation=True, return_token_type_ids=False).to(model.device)
     
+    # Get newline token id for early stopping
+    newline_token_id = tokenizer.encode('\n', add_special_tokens=False)
+    if newline_token_id:
+        eos_token_id = [tokenizer.eos_token_id] + newline_token_id
+    else:
+        eos_token_id = tokenizer.eos_token_id
+    
     set_seed(100)
     outputs = model.generate(
         **inputs, 
@@ -59,12 +66,14 @@ def multinormal_generation(model, tokenizer, prompts, num_samples):
         return_dict_in_generate=False,
         output_scores=False,
         output_hidden_states=False,
-        max_new_tokens=20, 
+        max_new_tokens=10, 
+        eos_token_id=eos_token_id,
         pad_token_id=tokenizer.eos_token_id)
     
     generated_token_ids = outputs[:, inputs.input_ids.shape[1]:]
     generated_texts = tokenizer.batch_decode(generated_token_ids, skip_special_tokens=True)
-    generated_texts = [text.strip() for text in generated_texts]
+    # Stop at newline to get only the first line
+    generated_texts = [text.split('\n')[0].strip() for text in generated_texts]
     # generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
     # new_generated_texts = [gen[len(prompt):] for gen, prompt in zip(generated_texts, [prompt for prompt in prompts for _ in range(100)])]
     split_generated_texts = [generated_texts[i:i+100] for i in range(0, len(generated_texts), 100)]
@@ -76,6 +85,13 @@ def greedy_generation(model, tokenizer, prompts):
     model.generation_config.top_k = None
     model.generation_config.pad_token_id = tokenizer.eos_token_id
 
+    # Get newline token id for early stopping
+    newline_token_id = tokenizer.encode('\n', add_special_tokens=False)
+    if newline_token_id:
+        eos_token_id = [tokenizer.eos_token_id] + newline_token_id
+    else:
+        eos_token_id = tokenizer.eos_token_id
+
     inputs = tokenizer(
         prompts, return_tensors="pt", padding=True, padding_side='left',
         truncation=True, return_token_type_ids=False).to(model.device)
@@ -84,11 +100,13 @@ def greedy_generation(model, tokenizer, prompts):
         **inputs, 
         pad_token_id=tokenizer.eos_token_id,
         do_sample=False,
-        max_new_tokens=20)
+        eos_token_id=eos_token_id,
+        max_new_tokens=10)
     
     generated_token_ids = outputs[:, inputs.input_ids.shape[1]:]
     generated_texts = tokenizer.batch_decode(generated_token_ids, skip_special_tokens=True)
-    generated_texts = [text.strip() for text in generated_texts]
+    # Stop at newline to get only the first line
+    generated_texts = [text.split('\n')[0].strip() for text in generated_texts]
     # new_generated_texts = [gen[len(prompt):] for gen, prompt in zip(generated_texts, [prompt for prompt in prompts for _ in range(100)])]
     return generated_texts
 

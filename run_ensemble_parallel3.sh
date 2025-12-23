@@ -2,39 +2,27 @@
 
 # Parallel Ensemble Generation Script - Remaining Tasks
 # Usage: ./run_ensemble_parallel3.sh
-# Runs remaining 7 tasks on available GPUs
-# For Quadro RTX 8000 machine with GPUs 0-7
+# Runs 6 tasks on GPUs 0,1,2,3,8,9
+# For Quadro RTX 8000 machine
 
 NUM_PARAPHRASES=5
 NUM_SAMPLES=5
 MAX_SAMPLES=10000
 
-# 8 GPUs available (Quadro RTX 8000: 0-7)
-GPUS=(0 1 2 3 4 5 6 7)
+# Using GPUs: 0, 1, 2, 3, 8, 9 (6 tasks)
+GPUS=(0 1 2 3 8 9)
 GPU_INDEX=0
 
-# Remaining tasks: 7 tasks total
-# qwen2.5_7b_it (max), qwen2.5_7b (avg, max), qwen2.5_3b (avg, max), qwen2.5_3b_it (avg, max)
+# Remaining tasks: 12 tasks total
+# Running: 6 tasks (llama3.1_8b_it avg/max, llama3.1_8b avg/max, qwen2.5_7b_it avg/max)
+# TODO: 6 tasks (qwen2.5_7b avg/max, qwen2.5_3b avg/max, qwen2.5_3b_it avg/max)
 
-# Task 1: qwen2.5_7b_it - max
-GPU_ID=${GPUS[$GPU_INDEX]}
-echo "Starting: qwen2.5_7b_it - max on GPU $GPU_ID"
-CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
-    --model qwen2.5_7b_it \
-    --method max \
-    --num_paraphrases $NUM_PARAPHRASES \
-    --num_samples $NUM_SAMPLES \
-    --max_samples $MAX_SAMPLES \
-    --dataset myriadlama &
-GPU_INDEX=$(( (GPU_INDEX + 1) ))
-sleep 2
-
-# Tasks 2-3: qwen2.5_7b (avg, max)
+# Tasks 1-2: llama3.1_8b_it (avg, max)
 for METHOD in avg max; do
     GPU_ID=${GPUS[$GPU_INDEX]}
-    echo "Starting: qwen2.5_7b - $METHOD on GPU $GPU_ID"
+    echo "Starting: llama3.1_8b_it - $METHOD on GPU $GPU_ID"
     CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
-        --model qwen2.5_7b \
+        --model llama3.1_8b_it \
         --method $METHOD \
         --num_paraphrases $NUM_PARAPHRASES \
         --num_samples $NUM_SAMPLES \
@@ -44,30 +32,98 @@ for METHOD in avg max; do
     sleep 2
 done
 
-# Tasks 4-7: qwen2.5_3b and qwen2.5_3b_it (avg, max)
-for MODEL in qwen2.5_3b qwen2.5_3b_it; do
-    for METHOD in avg max; do
-        GPU_ID=${GPUS[$GPU_INDEX]}
-        echo "Starting: $MODEL - $METHOD on GPU $GPU_ID"
-        CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
-            --model $MODEL \
-            --method $METHOD \
-            --num_paraphrases $NUM_PARAPHRASES \
-            --num_samples $NUM_SAMPLES \
-            --max_samples $MAX_SAMPLES \
-            --dataset myriadlama &
-        GPU_INDEX=$(( (GPU_INDEX + 1) ))
-        sleep 2
-    done
+# Tasks 3-4: llama3.1_8b (avg, max)
+for METHOD in avg max; do
+    GPU_ID=${GPUS[$GPU_INDEX]}
+    echo "Starting: llama3.1_8b - $METHOD on GPU $GPU_ID"
+    CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
+        --model llama3.1_8b \
+        --method $METHOD \
+        --num_paraphrases $NUM_PARAPHRASES \
+        --num_samples $NUM_SAMPLES \
+        --max_samples $MAX_SAMPLES \
+        --dataset myriadlama &
+    GPU_INDEX=$(( (GPU_INDEX + 1) ))
+    sleep 2
 done
 
-echo "Remaining tasks (7 tasks) submitted. Waiting for completion..."
+# Tasks 5-6: qwen2.5_7b_it (avg, max)
+for METHOD in avg max; do
+    GPU_ID=${GPUS[$GPU_INDEX]}
+    echo "Starting: qwen2.5_7b_it - $METHOD on GPU $GPU_ID"
+    CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
+        --model qwen2.5_7b_it \
+        --method $METHOD \
+        --num_paraphrases $NUM_PARAPHRASES \
+        --num_samples $NUM_SAMPLES \
+        --max_samples $MAX_SAMPLES \
+        --dataset myriadlama &
+    GPU_INDEX=$(( (GPU_INDEX + 1) ))
+    sleep 2
+done
+
+echo "Current batch (6 tasks) submitted. Waiting for completion..."
 wait
-echo "All remaining experiments completed!"
+echo "Current batch completed!"
 echo ""
 echo "======================================"
-echo "Summary: All 24 experiments finished!"
-echo "- Batch 1 (run_ensemble_parallel.sh): 9 tasks"
-echo "- Batch 2 (run_ensemble_parallel2.sh): 8 tasks"
-echo "- Batch 3 (run_ensemble_parallel3.sh): 7 tasks"
+echo "Summary: Batch 1 finished!"
+echo "✅ Completed:"
+echo "- llama3.1_8b_it: avg, max (GPUs 0,1)"
+echo "- llama3.1_8b: avg, max (GPUs 2,3)"
+echo "- qwen2.5_7b_it: avg, max (GPUs 8,9)"
+echo ""
+echo "❌ TODO - Not started yet:"
+echo "- qwen2.5_7b: avg, max"
+echo "- qwen2.5_3b: avg, max"
+echo "- qwen2.5_3b_it: avg, max"
 echo "======================================"
+
+# ========================================
+# TODO: Remaining 6 tasks (not running yet)
+# ========================================
+
+# # Tasks 7-8: qwen2.5_7b (avg, max) - TODO
+# for METHOD in avg max; do
+#     GPU_ID=${GPUS[$GPU_INDEX]}
+#     echo "Starting: qwen2.5_7b - $METHOD on GPU $GPU_ID"
+#     CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
+#         --model qwen2.5_7b \
+#         --method $METHOD \
+#         --num_paraphrases $NUM_PARAPHRASES \
+#         --num_samples $NUM_SAMPLES \
+#         --max_samples $MAX_SAMPLES \
+#         --dataset myriadlama &
+#     GPU_INDEX=$(( (GPU_INDEX + 1) ))
+#     sleep 2
+# done
+
+# # Tasks 9-10: qwen2.5_3b (avg, max) - TODO
+# for METHOD in avg max; do
+#     GPU_ID=${GPUS[$GPU_INDEX]}
+#     echo "Starting: qwen2.5_3b - $METHOD on GPU $GPU_ID"
+#     CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
+#         --model qwen2.5_3b \
+#         --method $METHOD \
+#         --num_paraphrases $NUM_PARAPHRASES \
+#         --num_samples $NUM_SAMPLES \
+#         --max_samples $MAX_SAMPLES \
+#         --dataset myriadlama &
+#     GPU_INDEX=$(( (GPU_INDEX + 1) ))
+#     sleep 2
+# done
+
+# # Tasks 11-12: qwen2.5_3b_it (avg, max) - TODO
+# for METHOD in avg max; do
+#     GPU_ID=${GPUS[$GPU_INDEX]}
+#     echo "Starting: qwen2.5_3b_it - $METHOD on GPU $GPU_ID"
+#     CUDA_VISIBLE_DEVICES=$GPU_ID python3 g_ori_sample_sync_xzhao.py \
+#         --model qwen2.5_3b_it \
+#         --method $METHOD \
+#         --num_paraphrases $NUM_PARAPHRASES \
+#         --num_samples $NUM_SAMPLES \
+#         --max_samples $MAX_SAMPLES \
+#         --dataset myriadlama &
+#     GPU_INDEX=$(( (GPU_INDEX + 1) ))
+#     sleep 2
+# done

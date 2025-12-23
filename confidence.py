@@ -1,5 +1,6 @@
 import os
 from pdb import set_trace
+import sys
 import spacy
 import numpy as np
 import pandas as pd
@@ -7,6 +8,9 @@ from tqdm import tqdm
 import multiprocessing as mp
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# Add GYB_self-ensemble directory to path to import its modules (same as g_ori_sample_sync_xzhao.py)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'GYB_self-ensemble'))
 
 from utils import greedy_generation, is_matched_str, multinormal_generation
 

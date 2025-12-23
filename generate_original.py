@@ -56,6 +56,9 @@ def single_generation(prompts, max_new_tokens=10):
 
     generated = None
 
+    # Get newline token id
+    newline_token_id = tokenizer.encode('\n', add_special_tokens=False)[0]
+
     for _ in range(max_new_tokens):
         with torch.no_grad():
             logits = model(inputs["input_ids"], attention_mask=inputs["attention_mask"]).logits[:, -1, :]
@@ -68,9 +71,14 @@ def single_generation(prompts, max_new_tokens=10):
             generated = next_token
         else:
             generated = torch.cat([generated, next_token], dim=1)
+        
+        # Stop if newline token is generated in any sequence
+        if (next_token == newline_token_id).any():
+            break
 
     generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
-    new_generated_texts = [gen.strip() for gen in generated_texts]
+    # Stop at newline to get only the first line
+    new_generated_texts = [gen.split('\n')[0].strip() for gen in generated_texts]
     return new_generated_texts
 
 @torch.no_grad()
@@ -93,6 +101,10 @@ def ensemble_generation(prompt_sets, integration_method="max", weights=None):
 
     all_input_ids = [inputs["input_ids"] for inputs in all_inputs]
     all_attention_masks = [inputs["attention_mask"] for inputs in all_inputs]
+    
+    # Get newline token id
+    newline_token_id = tokenizer.encode('\n', add_special_tokens=False)[0]
+    
     for _ in range(max_new_tokens):
         logits_set = []
         with torch.no_grad():
@@ -136,8 +148,14 @@ def ensemble_generation(prompt_sets, integration_method="max", weights=None):
             generated = next_token
         else:
             generated = torch.cat([generated, next_token], dim=1)
-        generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
-        new_generated_texts = [gen.strip() for gen in generated_texts]
+        
+        # Stop if newline token is generated in any sequence
+        if (next_token == newline_token_id).any():
+            break
+    
+    generated_texts = tokenizer.batch_decode(generated, skip_special_tokens=True)
+    # Stop at newline to get only the first line
+    new_generated_texts = [gen.split('\n')[0].strip() for gen in generated_texts]
     return new_generated_texts
 
 
