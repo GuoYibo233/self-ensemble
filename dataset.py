@@ -14,7 +14,12 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils import set_seed
 
-DATATASET_ROOT = "/home/xzhao/workspace/GYB_self-ensemble/datasets"
+import os as _os
+_current_user = _os.environ.get('USER', 'unknown')
+if _current_user == 'y-guo':
+    DATATASET_ROOT = "/home/y-guo/self-ensemble"
+else:
+    DATATASET_ROOT = "/home/xzhao/workspace/GYB_self-ensemble/datasets"
 
 
 def string_to_id(s):

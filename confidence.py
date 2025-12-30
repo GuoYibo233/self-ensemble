@@ -85,7 +85,10 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unsupported dataset. Please use 'webqa' or 'myriadlama'.")
 
-    dump_path = os.path.join(dataset.dataset_root, "confidence.feather")
+    # Use local directory instead of xzhao's directory
+    local_dataset_root = f"/home/y-guo/self-ensemble/self-ensemble/datasets/{args.dataset}/{args.model}"
+    os.makedirs(local_dataset_root, exist_ok=True)
+    dump_path = os.path.join(local_dataset_root, "confidence.feather")
 
     print("Dump path: ", dump_path)
     if args.write_confidence:
